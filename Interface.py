@@ -30,7 +30,7 @@ def draw_dashboard(screen, clock, pop, total_steps, mean_nodes, params, width, d
 
 def show_graphics_off(screen, font, width, height, is_paused, dashboard_size):
     screen.fill((15, 15, 15)) # Fond très sombre
-    txt_off = font.render(" RENDU DÉSACTIVÉ (Calcul Intensif) - Appuyez sur 'G' pour réactiver ", True, (150, 150, 150))
+    txt_off = font.render(" GRAPHICS OFF (Intensive Computation) - Press 'G' to re-enable ", True, (150, 150, 150))
     screen.blit(txt_off, (width // 2 - txt_off.get_width() // 2, height // 2)) # On centre le texte
     if is_paused: graphics_pause(screen, font, dashboard_size)
     pygame.display.flip() 

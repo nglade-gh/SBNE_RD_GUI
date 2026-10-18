@@ -210,7 +210,7 @@ class ReactionDiffusion:
         et ajoutée intégralement à MD2 (répartie proportionnellement à MD1^{n+1}).
 
         cl_md1/cl_md2 = dict {'x_left','x_right','y_top','y_bottom'} avec valeurs
-        "TORIC" | "NEUMANN" | ("DIRICHLET", valeur) — par défaut tout TORIC.
+        "TORIC" | "NEUMANN" | ("DIRICHLET", value) — default TORIC for all sides.
         """
         if cl_md1 is None:
             cl_md1 = {'x_left': 'TORIC', 'x_right': 'TORIC', 'y_top': 'TORIC', 'y_bottom': 'TORIC'}
@@ -350,7 +350,7 @@ class ReactionDiffusion:
 
         mode = "MD1"  : seule la MD1 (vert)
         mode = "MD2"  : seule la MD2 (rouge)
-        mode = "BOTH" : mélange — MD1 en vert, MD2 en rouge (jaune/orange là où les deux coexistent)
+        mode = "BOTH": blend — MD1 green, MD2 red (yellow/orange where both coexist)
         Intensité = valeur normalisée par le max courant (lissé pour éviter les scintillements).
         """
         # Max glissant pour une normalisation stable

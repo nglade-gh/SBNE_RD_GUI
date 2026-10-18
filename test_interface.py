@@ -60,14 +60,15 @@ check("restart → steps=0, pop ok", sim.total_steps == 0 and len(sim.agents) ==
 
 print("=== 2. Panneau gauche : fold ===")
 sim.render()
-hdr = next((r for n, r in sim.left_panel.section_headers.items() if n == "Agents"), None)
-if hdr:
-    clic(hdr.centerx, hdr.centery)
-    check("fold Agents → replié", sim.left_panel.sections["Agents"]["expanded"] is False)
-    clic(hdr.centerx, hdr.centery)
-    check("unfold Agents → déplié", sim.left_panel.sections["Agents"]["expanded"] is True)
+tab = sim.left_panel.tab_rects.get("Agents")
+if tab:
+    clic(tab.centerx, tab.centery)
+    check("clic onglet Agents → active_tab='agents'", sim.left_panel.active_tab == "agents")
+    tab_p = sim.left_panel.tab_rects.get("Parameters")
+    clic(tab_p.centerx, tab_p.centery)
+    check("retour onglet Parameters → active_tab='params'", sim.left_panel.active_tab == "params")
 else:
-    check("fold Agents", False, "(header Agents non trouvé)")
+    check("onglet Agents", False, "(onglet Agents non trouvé)")
 
 print("=== 3. Scrollbar panneau gauche ===")
 sb = sim.left_panel.scrollbar_rect

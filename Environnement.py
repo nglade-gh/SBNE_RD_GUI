@@ -97,7 +97,7 @@ COLOR_TAB_INACTIVE = (35, 42, 55)
 
 
 # =============================================
-# PARAMÈTRES DE LA SIMULATION
+# SIMULATION PARAMETERS
 # =============================================
 PARAMS = {
     "TEST_NAME": "RD_MD1_MD2_reaction_diffusion",
@@ -117,37 +117,37 @@ PARAMS = {
     "COST_ROTATE": 0.1,
     "COST_EAT": 0.01,
     "COST_METABOLISM": 0.1,
-    "CONSUME_QTY": 100.0,  # matière (MD1/MD2) consommée par tentative de bouche
+    "CONSUME_QTY": 100.0,  # matter (MD1/MD2) consumed per mouth attempt
     "MAX_SELECTED_SBN": 5,
     "DISPLAY_REFRESH_FPS": 30,
-    # --- Réaction-diffusion MD1/MD2 ---
-    "DX_GRID": 20.0,        # pas de la grille de matière (px)
-    "D_MD1": 0.5,           # coefficient de diffusion MD1 (px²/s)
-    "D_MD2": 0.5,           # coefficient de diffusion MD2 (px²/s)
-    "K_MD1_MD2": 0.1,       # vitesse de conversion MD1→MD2 (s⁻¹)
-    "NUM_MD1_INIT": 10,     # dépôts initiaux de MD1
-    "MD1_INIT_QTY": 500.0,  # quantité par dépôt initial (px²·énergie)
-    # --- Conditions aux limites matière (TORIC / NEUMANN / DIRICHLET) ---
+    # --- Reaction-diffusion MD1/MD2 ---
+    "DX_GRID": 20.0,        # matter grid step (px)
+    "D_MD1": 0.5,           # MD1 diffusion coefficient (px²/s)
+    "D_MD2": 0.5,           # MD2 diffusion coefficient (px²/s)
+    "K_MD1_MD2": 0.1,       # MD1→MD2 conversion rate (s⁻¹)
+    "NUM_MD1_INIT": 10,     # initial MD1 deposits
+    "MD1_INIT_QTY": 500.0,  # energy per initial deposit (px²·energy)
+    # --- Matter boundary conditions (TORIC / NEUMANN / DIRICHLET) ---
     "CL_MD1_LEFT": "TORIC", "CL_MD1_RIGHT": "TORIC",
     "CL_MD1_TOP": "TORIC", "CL_MD1_BOTTOM": "TORIC",
     "CL_MD2_LEFT": "TORIC", "CL_MD2_RIGHT": "TORIC",
     "CL_MD2_TOP": "TORIC", "CL_MD2_BOTTOM": "TORIC",
-    # Valeur Dirichlet PAR BORD et PAR MATIÈRE (MD1, MD2) — défaut 0
+    # Dirichlet value PER SIDE and PER MATTER (MD1, MD2) — default 0
     "CL_DIRICHLET_LEFT_MD1": 0.0, "CL_DIRICHLET_RIGHT_MD1": 0.0,
     "CL_DIRICHLET_TOP_MD1": 0.0, "CL_DIRICHLET_BOTTOM_MD1": 0.0,
     "CL_DIRICHLET_LEFT_MD2": 0.0, "CL_DIRICHLET_RIGHT_MD2": 0.0,
     "CL_DIRICHLET_TOP_MD2": 0.0, "CL_DIRICHLET_BOTTOM_MD2": 0.0,
-    # --- Conditions aux limites agents (TORIC / SOLID) ---
+    # --- Agent boundary conditions (TORIC / SOLID) ---
     "CL_AGENTS_LEFT": "TORIC", "CL_AGENTS_RIGHT": "TORIC",
     "CL_AGENTS_TOP": "TORIC", "CL_AGENTS_BOTTOM": "TORIC",
-    # Comportement à la paroi solide : "AGENT_STOP" ou "AGENT_REBOUNCE" (bille de billard)
+    # Solid wall behavior: "AGENT_STOP" or "AGENT_REBOUNCE" (billiard ball)
     "CL_AGENTS_WALL_LEFT": "AGENT_STOP", "CL_AGENTS_WALL_RIGHT": "AGENT_STOP",
     "CL_AGENTS_WALL_TOP": "AGENT_STOP", "CL_AGENTS_WALL_BOTTOM": "AGENT_STOP",
 }
 
 
 def init_database(db_path):
-    """Crée les tables (et index) de la base SQLite si elles n'existent pas."""
+    """Creates SQLite tables (and indexes) if they don't exist."""
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
     cursor.execute("""
@@ -187,7 +187,7 @@ def init_database(db_path):
 
 
 class Simulation:
-    """Contient tout l'état d'une simulation et orchestre logique / rendu / base de données."""
+    """Holds the full simulation state and orchestrates logic / rendering / database."""
 
     def __init__(self, params, headless=False, max_steps=0, outdir=None):
         # --- PARAMÈTRES GÉNÉRAUX ---
@@ -288,8 +288,8 @@ class Simulation:
                                      self.win_width - LEFT_PANEL_WIDTH - RIGHT_PANEL_WIDTH, self.height)
         self.resizing = False
         self.brain_nav_rects = {}
-        # Onglets du panneau droit : "cerveaux" ou "stats" (clic pour changer)
-        self.right_tab = "cerveaux"
+        # Right panel tabs: "brains" or "statistics" (click to switch)
+        self.right_tab = "brains"
         self.right_tab_rects = {}
         # Grille affichée : "MD1", "MD2" ou "BOTH" (touches 1/2/3)
         self.matter_display = "BOTH"
@@ -349,7 +349,7 @@ class Simulation:
     # INITIALISATION GUI
     # ========================================================================
     def _setup_gui(self):
-        """Initialise pygame_gui et tous les widgets de contrôle."""
+        """Initializes pygame_gui and all control widgets."""
         theme = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'gui_theme.json')
         self.ui_manager = pygame_gui.UIManager((int(self.win_width), int(self.win_height)), theme)
 
@@ -426,7 +426,7 @@ class Simulation:
                                 self.win_width, CONSOLE_HEIGHT)
 
     def _init_population(self):
-        """Initialise la population d'agents."""
+        """Initializes the agent population."""
         self.agents = []
         for i in range(self.num_agents):
             agent = Agent(
@@ -459,7 +459,7 @@ class Simulation:
     # GESTION DES ÉVÉNEMENTS
     # ========================================================================
     def handle_events(self):
-        """Traite les événements pygame et pygame_gui (mode interactif uniquement)."""
+        """Processes pygame and pygame_gui events (interactive mode only)."""
         if self.headless:
             return  # pas de boucle d'événements en headless
 
@@ -476,7 +476,7 @@ class Simulation:
             self.ui_manager.update(1.0 / self.fps)
 
     def _process_event(self, event):
-        """Traite un événement pygame pygame_gui."""
+        """Processes a single pygame/pygame_gui event."""
         mx, my = event.pos if hasattr(event, "pos") else (0, 0)
 
         # --- Redimensionnement du panneau gauche (bordure verticale) ---
@@ -593,7 +593,7 @@ class Simulation:
     # SAUVEGARDE / RESTAURATION (menu)
     # ========================================================================
     def _execute_menu_action(self, action):
-        """Exécute une action du menu."""
+        """Executes a menu action."""
         os.makedirs(_SBNE_DIR, exist_ok=True)
         try:
             if action == "save_sim":
@@ -624,7 +624,7 @@ class Simulation:
             self.menu.status_msg = f"Error: {e}"
 
     def _save_simulation(self, path):
-        """Sauvegarde l'état complet (pickle) : agents, champ, stats, RNG."""
+        """Saves the complete state (pickle): agents, field, stats, RNG."""
         state = {
             'agents': self.agents,
             'md1': self.field.MD1.copy(),
@@ -647,7 +647,7 @@ class Simulation:
         self.menu.status_msg = f"Saved: {os.path.basename(path)}"
 
     def _restore_simulation(self, path):
-        """Restaure l'état complet depuis un pickle."""
+        """Restores the complete state from a pickle."""
         if not os.path.exists(path):
             self.menu.status_msg = f"File not found: {path}"
             return
@@ -670,18 +670,18 @@ class Simulation:
             self.stats_global_energy = state['stats_global_energy']
             random.setstate(state['random_state'])
             np.random.set_state(state['np_state'])
-        self.console.info(f"Simulation restaurée ← {path}")
-        self.menu.status_msg = f"Restauré: {os.path.basename(path)}"
+        self.console.info(f"Simulation restored ← {path}")
+        self.menu.status_msg = f"Restored: {os.path.basename(path)}"
 
     def _save_params_json(self, params_dict, path):
-        """Sauvegarde des paramètres en JSON."""
+        """Saves parameters as JSON."""
         with open(path, 'w', encoding='utf-8') as f:
             json.dump(params_dict, f, indent=4)
         self.console.info(f"Parameters saved → {path}")
         self.menu.status_msg = f"Saved: {os.path.basename(path)}"
 
     def _load_params_json(self, path):
-        """Charge des paramètres depuis un JSON et met à jour PARAMS."""
+        """Loads parameters from a JSON file and updates PARAMS."""
         if not os.path.exists(path):
             self.menu.status_msg = f"File not found: {path}"
             return
@@ -712,13 +712,13 @@ class Simulation:
             self.cl_dirichlet_value = float(value)
 
     def _on_cl_change(self, side, matter, value):
-        """Callback : une condition aux limites a été changée dans l'explorateur."""
+        """Callback: a boundary condition was changed in the explorer."""
         if matter == "Agents":
             setattr(self, f"cl_agents_{side.lower()}", value)
         self.console.info(f"CL {side} {matter} → {value}")
 
     def _toggle_agent_selection(self, agent_id):
-        """Bascule la sélection d'un agent (checkbox du panneau ou clic monde)."""
+        """Toggles an agent's selection (panel checkbox or world click)."""
         if agent_id in self.selected_agents:
             self.selected_agents.remove(agent_id)
             self.console.info(f"Agent {agent_id} deselected")
@@ -726,13 +726,13 @@ class Simulation:
             if len(self.selected_agents) >= self.max_selected_sbn:
                 self.console.error(
                     "Il n'est pas possible de sélectionner davantage d'agents ; "
-                    "modifiez la valeur du paramètre MAX_SELECTED_SBN")
+                    "modify the MAX_SELECTED_SBN parameter")
                 return
             self.selected_agents.append(agent_id)
-            self.console.info(f"Agent {agent_id} sélectionné (onglet {len(self.selected_agents)})")
+            self.console.info(f"Agent {agent_id} selected (tab {len(self.selected_agents)})")
 
     def _handle_world_click(self, wx, wy, button=1):
-        """Clic gauche (1) = sélectionner ; clic droit (3) = désélectionner."""
+        """Left click (1) = select ; right click (3) = deselect."""
         rayon_sq = self.taille_agent * self.taille_agent
         clicked = None
         for agent in self.agents:
@@ -750,21 +750,21 @@ class Simulation:
         if button == 3:  # Clic droit : désélectionner l'agent pointé
             if clicked.id in self.selected_agents:
                 self.selected_agents.remove(clicked.id)
-                self.console.info(f"Agent {clicked.id} désélectionné (clic droit)")
+                self.console.info(f"Agent {clicked.id} deselected (right click)")
             else:
-                self.console.info(f"Agent {clicked.id} n'est pas sélectionné")
+                self.console.info(f"Agent {clicked.id} is not selected")
         else:  # Clic gauche : toggle sélection (limité à MAX_SELECTED_SBN)
             if clicked.id in self.selected_agents:
                 self.selected_agents.remove(clicked.id)
-                self.console.info(f"Agent {clicked.id} désélectionné")
+                self.console.info(f"Agent {clicked.id} deselected")
             else:
                 if len(self.selected_agents) >= self.max_selected_sbn:
                     self.console.error(
                         "Il n'est pas possible de sélectionner davantage d'agents ; "
-                        "modifiez la valeur du paramètre MAX_SELECTED_SBN")
+                        "modify the MAX_SELECTED_SBN parameter")
                     return
                 self.selected_agents.append(clicked.id)
-                self.console.info(f"Agent {clicked.id} sélectionné (onglet {len(self.selected_agents)})")
+                self.console.info(f"Agent {clicked.id} selected (tab {len(self.selected_agents)})")
 
     # ========================================================================
     # RÉINITIALISATION (bouton Restart)
@@ -815,7 +815,7 @@ class Simulation:
             self.stats_global_energy.clear()
             self.spatial_grid = SpatialGrid(self.width, self.height, self.cell_size)
 
-            self.console.info(f"Simulation réinitialisée — {self.num_agents} agents, seed={PARAMS.get('SEED', 42)}")
+            self.console.info(f"Simulation reset — {self.num_agents} agents, seed={PARAMS.get('SEED', 42)}")
         finally:
             self.sim_lock.release()
 
@@ -836,7 +836,7 @@ class Simulation:
                     sb_network=agent.sbn,
                     iteration=self.total_steps,
                     is_snapshot=True,
-                    message="Snapshot périodique"
+                    message="Periodic snapshot"
                 )
 
         random.shuffle(self.agents)
@@ -880,10 +880,10 @@ class Simulation:
                     sb_network=enfant.sbn,
                     iteration=self.total_steps,
                     is_snapshot=False,
-                    message="Mutation à la naissance"
+                    message="Mutation at birth"
                 )
 
-        # Résolution des conflits de prédation (deux agents qui se mangent mutuellement)
+        # Resolve predation conflicts (two agents eating each other)
         for agent, victim in eat_intentions.items():
             if not agent.alive or not victim.alive:
                 continue
@@ -924,14 +924,14 @@ class Simulation:
         self.agents.extend(new_enfants)
 
     def _build_cl(self, prefix, side):
-        """Condition aux limites pour une matière (MD1/MD2) et un bord."""
+        """Boundary condition for a matter (MD1/MD2) and a side."""
         val = PARAMS.get(f"{prefix}_{side}", "TORIC")
         if val == "DIRICHLET":
             return ("DIRICHLET", PARAMS.get(f"CL_DIRICHLET_{side}_{prefix}", 0.0))
         return val  # "TORIC" ou "NEUMANN"
 
     def _build_matter_cl(self, prefix):
-        """Construit le dict de CL pour une matière (MD1 ou MD2)."""
+        """Builds the BC dict for a matter (MD1 or MD2)."""
         return {
             'x_left': self._build_cl(prefix, 'LEFT'),
             'x_right': self._build_cl(prefix, 'RIGHT'),
@@ -962,8 +962,8 @@ class Simulation:
     # RENDU
     # ========================================================================
     def render(self):
-        """Rendu complet de la fenêtre (thread principal). Le lock protège la
-        lecture des données pendant que le thread sim les met à jour."""
+        """Full window render (main thread). The lock protects data reads
+        while the sim thread updates them."""
         with self.sim_lock:
             self._render_locked()
 
@@ -1104,7 +1104,7 @@ class Simulation:
 
         # --- Barre d'onglets (2 boutons en haut du panneau droit) ---
         tab_w = (RIGHT_PANEL_WIDTH - 20) // 2
-        for i, name in enumerate(("CERVEAUX", "STATS")):
+        for i, name in enumerate(("BRAINS", "STATISTICS")):
             r = pygame.Rect(panel_x + 10 + i * (tab_w + 4), panel_y + 5, tab_w, 20)
             self.right_tab_rects[name] = r
             active = (self.right_tab == name.lower())
@@ -1114,13 +1114,13 @@ class Simulation:
             self.screen.blit(lbl, (r.x + 8, r.y + 3))
 
         # --- Contenu selon l'onglet actif ---
-        if self.right_tab in ("cerveaux", "cerveau", "brains"):
+        if self.right_tab in ("brains", "cerveau", "cerveaux"):
             self._draw_brains_content(panel_x, content_top, content_h)
         else:
             self._draw_stats_content(panel_x, content_top, content_h)
 
     def _draw_brains_content(self, panel_x, top, h):
-        """Contenu onglet CERVEAUX : liste sélectionnés, navigation, graphe SBN."""
+        """BRAINS tab content: selected list, navigation, SBN graph."""
         prev2 = pygame.Rect(panel_x + 8, top + 4, 16, 14)
         next2 = pygame.Rect(panel_x + RIGHT_PANEL_WIDTH - 24, top + 4, 16, 14)
         self._draw_triangle(self.screen, prev2.centerx, prev2.centery, "left", (170, 178, 190))
@@ -1164,10 +1164,10 @@ class Simulation:
                 self._draw_sbn_graph(panel_x + 8, graph_top, RIGHT_PANEL_WIDTH - 16,
                                      self.win_height - CONSOLE_HEIGHT - 8 - graph_top, agent)
             else:
-                surf = self.font_small.render("Agent mort", True, COLOR_YELLOW)
+                surf = self.font_small.render("Dead agent", True, COLOR_YELLOW)
                 self.screen.blit(surf, (panel_x + 10, graph_top + 4))
         else:
-            surf = self.font_small.render("Aucun agent sélectionné", True, COLOR_TEXT_DIM)
+            surf = self.font_small.render("No agent selected", True, COLOR_TEXT_DIM)
             self.screen.blit(surf, (panel_x + 10, graph_top + 4))
 
     def _draw_stats_content(self, panel_x, top, h):
@@ -1184,15 +1184,15 @@ class Simulation:
             mean_energy = mean_nodes = max_age = global_e = energy_agent = 0
         stats = {
             "Population": pop,
-            "Énergie moy.": f"{mean_energy:.0f}",
-            "Noeuds moy.": f"{mean_nodes:.1f}",
-            "Âge max": max_age,
-            "Énergie agents": f"{energy_agent:.0f}",
+            "Mean energy": f"{mean_energy:.0f}",
+            "Mean nodes": f"{mean_nodes:.1f}",
+            "Max age": max_age,
+            "Agent energy": f"{energy_agent:.0f}",
             "MD1 tot.": f"{md1_tot:.0f}",
             "MD2 tot.": f"{md2_tot:.0f}",
-            "Énergie globale": f"{global_e:.0f}",
-            "Pas": self.total_steps,
-            "Sélectionnés": len(self.selected_agents),
+            "Global energy": f"{global_e:.0f}",
+            "Steps": self.total_steps,
+            "Selected": len(self.selected_agents),
         }
         y = top + 6
         for key, value in stats.items():
@@ -1218,14 +1218,14 @@ class Simulation:
         """Navigation cerveau :
         - prev1/next1 : défiler la sélection parmi TOUS les agents vivants
           (depuis l'affiché), wrap ; le nouvel agent prend la place de l'affiché.
-        - prev2/next2 : changer l'agent affiché parmi les sélectionnés."""
+        - prev2/next2: change the displayed agent among the selected ones."""
         if action in ("prev1", "next1"):
             alive_ids = sorted(a.id for a in self.agents)
             if not alive_ids:
-                self.console.info("Aucun agent vivant")
+                self.console.info("No living agent")
                 return
             if not self.selected_agents:
-                self.console.info("Aucun agent sélectionné — cliquez d'abord sur un agent")
+                self.console.info("No agent selected — click an agent first")
                 return
             displayed = self.selected_agents[self.active_brain_tab]
             if displayed in alive_ids:
@@ -1235,15 +1235,15 @@ class Simulation:
             step = 1 if action == "next1" else -1
             new_id = alive_ids[(idx + step) % len(alive_ids)]  # wrap aux frontières
             self.selected_agents[self.active_brain_tab] = new_id  # prend sa place
-            self.console.info(f"Agent {new_id} sélectionné (remplace {displayed})")
+            self.console.info(f"Agent {new_id} selected (replaces {displayed})")
         else:
             n = len(self.selected_agents)
             if n == 0:
-                self.console.info("Aucun agent sélectionné")
+                self.console.info("No agent selected")
                 return
             step = 1 if action == "next2" else -1
             self.active_brain_tab = (self.active_brain_tab + step) % n
-            self.console.info(f"Agent affiché : {self.selected_agents[self.active_brain_tab]}")
+            self.console.info(f"Displayed agent: {self.selected_agents[self.active_brain_tab]}")
 
     def _draw_sbn_graph(self, x, y, w, h, agent):
         """Dessine le graphe SBN d'un agent dans le rectangle donné.
@@ -1253,7 +1253,7 @@ class Simulation:
         n = sbn.num_nodes
 
         if n == 0:
-            surf = self.font_small.render("Aucun nœud", True, COLOR_TEXT_DIM)
+            surf = self.font_small.render("No node", True, COLOR_TEXT_DIM)
             self.screen.blit(surf, (x + 5, y + 5))
             return
 
@@ -1438,7 +1438,7 @@ def _coerce_param(value):
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Simulation SBN — écosystème évolutionnaire (SBNE_GUI)")
+    parser = argparse.ArgumentParser(description="SBN simulation — evolutionary ecosystem (SBNE_RD_GUI)")
     parser.add_argument("--headless", action="store_true")
     parser.add_argument("--max-steps", type=int, default=None)
     parser.add_argument("--seed", type=int, default=None)
@@ -1457,7 +1457,7 @@ def main():
         key, _, value = spec.partition("=")
         key = key.strip()
         if key not in PARAMS:
-            sys.exit(f"Paramètre inconnu : {key!r} (clés disponibles : {', '.join(sorted(PARAMS))})")
+            sys.exit(f"Unknown parameter: {key!r} (available keys: {', '.join(sorted(PARAMS))})")
         PARAMS[key] = _coerce_param(value)
     if args.max_steps is not None:
         max_steps = args.max_steps

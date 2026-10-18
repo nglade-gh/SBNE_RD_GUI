@@ -93,7 +93,7 @@ class ConsoleLog:
 
         # Indicateur de scroll si nécessaire
         if len(self.messages) > max_visible:
-            indicator = self.font.render(f"↑ {len(self.messages) - max_visible} messages masqués", True, COLOR_TEXT_DIM)
+            indicator = self.font.render(f"↑ {len(self.messages) - max_visible} hidden messages", True, COLOR_TEXT_DIM)
             screen.blit(indicator, (self.rect.right - indicator.get_width() - self.padding, self.rect.y + 4))
 
 
@@ -284,7 +284,7 @@ class LeftPanelTree:
     def __init__(self, x, y, w, h, params_dict, font_size=12, on_param_change=None):
         self.rect = pygame.Rect(x, y, w, h)
         self.font = pygame.font.SysFont("Arial", font_size)                  # titres / headers
-        self.font_small = pygame.font.SysFont("Arial", max(8, font_size - 3))  # params & agents (moitié)
+        self.font_small = pygame.font.SysFont("Arial", max(8, font_size - 3))  # params & agents (half size)
         self.font_title = pygame.font.SysFont("Arial", font_size + 2, bold=True)
         self.params = params_dict
         self.on_param_change = on_param_change  # callback(cle, nouvelle_valeur)
