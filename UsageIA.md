@@ -13,7 +13,6 @@
 
 | Phase | Opérations | Coût estimé (tokens) |
 |---|---|---|
-| MESS2 (C++, terminé) | 3 | ~15 000 |
 | SBNE — Refactoring | 8 | ~45 000 |
 | SBNE — Parallélisation + lanceur | 6 | ~30 000 |
 | SBNE — Documentation + nettoyage | 5 | ~20 000 |
@@ -32,14 +31,6 @@
 ---
 
 ## Inventaire détaillé
-
-### MESS2 (C++, sessions précédentes)
-
-| # | Opération | Coût estimé |
-|---|---|---|
-| 1 | Tests LinAlg 48/48 PASSED | ~2 000 |
-| 2 | Header `MES_LinAlg.h` corrigé | ~3 000 |
-| 3 | Workspace vérifié | ~10 000 |
 
 ### SBNE — Refactoring (terminé)
 
