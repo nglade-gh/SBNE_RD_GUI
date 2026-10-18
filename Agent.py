@@ -47,40 +47,77 @@ class Agent:
 
     def move(self, env_cl=None):
         """Déplace l'agent. env_cl = dict ('x_left','x_right','y_top','y_bottom'
-        : 'TORIC' ou 'NEUMANN'). Avec Neumann, l'agent est bloqué aux bords."""
+        : 'TORIC' ou 'SOLID') + ('wall_left','wall_right','wall_top','wall_bottom'
+        : 'AGENT_STOP' ou 'AGENT_REBOUNCE'). Une paroi solide bloque l'agent :
+        AGENT_STOP = il reste sur la paroi ; AGENT_REBOUNCE = il rebondit
+        comme une bille de billard (réflexion élastique, sans coût)."""
         rad = math.radians(self.angle)
         dx = self.speed * math.cos(rad)
         dy = self.speed * math.sin(rad)
         new_x = self.x + dx
         new_y = self.y + dy
         cl = env_cl or {}
+        bounced = False
 
-        # CL X
-        if cl.get('x_left') == 'NEUMANN' and cl.get('x_right') == 'NEUMANN':
-            new_x = min(max(new_x, 1.0), self.env_width - 1.0)
-        elif cl.get('x_left') == 'NEUMANN':
-            new_x = new_x % self.env_width
-            new_x = max(new_x, 1.0)
-        elif cl.get('x_right') == 'NEUMANN':
-            new_x = new_x % self.env_width
-            new_x = min(new_x, self.env_width - 1.0)
+        # --- CL X ---
+        if cl.get('x_left') == 'SOLID' and cl.get('x_right') == 'SOLID':
+            if new_x < 1.0 or new_x > self.env_width - 1.0:
+                new_x = min(max(new_x, 1.0), self.env_width - 1.0)
+                bounced = self._wall_bounce(cl, 'wall_left' if new_x <= 1.0 else 'wall_right',
+                                            'x', 'y')
+        elif cl.get('x_left') == 'SOLID':
+            if new_x < 1.0:
+                new_x = 1.0
+                bounced = self._wall_bounce(cl, 'wall_left', 'x', 'y')
+            elif new_x > self.env_width:
+                new_x = new_x % self.env_width
+        elif cl.get('x_right') == 'SOLID':
+            if new_x > self.env_width - 1.0:
+                new_x = self.env_width - 1.0
+                bounced = self._wall_bounce(cl, 'wall_right', 'x', 'y')
+            elif new_x < 0:
+                new_x = new_x % self.env_width
         else:
             new_x = new_x % self.env_width
 
-        # CL Y
-        if cl.get('y_top') == 'NEUMANN' and cl.get('y_bottom') == 'NEUMANN':
-            new_y = min(max(new_y, 1.0), self.env_height - 1.0)
-        elif cl.get('y_top') == 'NEUMANN':
-            new_y = new_y % self.env_height
-            new_y = max(new_y, 1.0)
-        elif cl.get('y_bottom') == 'NEUMANN':
-            new_y = new_y % self.env_height
-            new_y = min(new_y, self.env_height - 1.0)
+        # --- CL Y ---
+        if cl.get('y_top') == 'SOLID' and cl.get('y_bottom') == 'SOLID':
+            if new_y < 1.0 or new_y > self.env_height - 1.0:
+                new_y = min(max(new_y, 1.0), self.env_height - 1.0)
+                bounced = self._wall_bounce(cl, 'wall_top' if new_y <= 1.0 else 'wall_bottom',
+                                            'y', 'x')
+        elif cl.get('y_top') == 'SOLID':
+            if new_y < 1.0:
+                new_y = 1.0
+                bounced = self._wall_bounce(cl, 'wall_top', 'y', 'x')
+            elif new_y > self.env_height:
+                new_y = new_y % self.env_height
+        elif cl.get('y_bottom') == 'SOLID':
+            if new_y > self.env_height - 1.0:
+                new_y = self.env_height - 1.0
+                bounced = self._wall_bounce(cl, 'wall_bottom', 'y', 'x')
+            elif new_y < 0:
+                new_y = new_y % self.env_height
         else:
             new_y = new_y % self.env_height
 
         self.x = new_x
         self.y = new_y
+        return bounced
+
+    def _wall_bounce(self, cl, wall_key, axis, other_axis):
+        """Wall behavior: AGENT_STOP (stay) or AGENT_REBOUNCE (elastic reflection,
+        like a billiard ball). Returns True if a bounce occurred."""
+        mode = cl.get(wall_key, 'AGENT_STOP')
+        if mode == 'AGENT_REBOUNCE':
+            if axis == 'x':
+                # Mur vertical : inverse la composante X de la direction
+                self.angle = (180 - self.angle) % 360
+            else:
+                # Mur horizontal : inverse la composante Y de la direction
+                self.angle = (-self.angle) % 360
+            return True
+        return False
 
     def rotate(self):
         self.angle += self.rotate_deg

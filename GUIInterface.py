@@ -4,7 +4,7 @@ GUIInterface — Interface graphique avancée pour SBNE_GUI.
 Contient :
 - ConsoleLog : console de log avec code couleur (vert/jaune/rouge)
 - TabButton : onglet personnalisé (pygame_gui n'a pas de UITabContainer)
-- LeftPanelTree : arborescence gauche (Paramètres / Agents / Environnement)
+- LeftPanelTree : left panel tree (Parameters / Agents / Environment)
 - StatsPanel : panneau de statistiques en direct
 """
 import pygame
@@ -241,15 +241,15 @@ class MenuOverlay:
                     (px + 16, py + 10))
 
         actions = [
-            ("save_sim", "Sauvegarder la simulation (pickle)"),
-            ("restore_sim", "Restaurer une simulation"),
-            ("save_default", "Sauvegarder les paramètres comme défaut"),
-            ("save_params", "Sauvegarder les paramètres dans un fichier"),
-            ("restore_default", "Restaurer les paramètres par défaut"),
-            ("save_origin", "Sauvegarder les paramètres d'origine"),
-            ("restore_origin", "Restaurer les paramètres d'origine"),
-            ("load_params", "Charger un fichier de paramètres"),
-            ("close", "Fermer le menu"),
+            ("save_sim", "Save simulation (pickle)"),
+            ("restore_sim", "Restore simulation"),
+            ("save_default", "Save parameters as default"),
+            ("save_params", "Save parameters to file"),
+            ("restore_default", "Restore default parameters"),
+            ("save_origin", "Save original parameters"),
+            ("restore_origin", "Restore original parameters"),
+            ("load_params", "Load parameters file"),
+            ("close", "Close menu"),
         ]
         self.buttons = []
         y = py + 40
@@ -277,9 +277,9 @@ class MenuOverlay:
 # ARBORESCENCE GAUCHE
 # ============================================================================
 class LeftPanelTree:
-    """Panneau gauche : arborescence repliable (Paramètres / Agents /
-    Environnement), scrollbar vertical fonctionnelle (clic + drag + molette),
-    et paramètres éditables par clic (Entrée = valider, Échap = annuler)."""
+    """Left panel: collapsible tree (Parameters / Agents / Environment),
+    vertical scrollbar (click + drag + wheel), click-to-edit parameters
+    (Enter = validate, Escape = cancel)."""
 
     def __init__(self, x, y, w, h, params_dict, font_size=12, on_param_change=None):
         self.rect = pygame.Rect(x, y, w, h)
@@ -291,9 +291,9 @@ class LeftPanelTree:
         self.selected_ids = set()  # ids sélectionnés (checkbox verts)
 
         self.sections = {
-            "Paramètres": {"expanded": True, "items": []},
-            "Agents": {"expanded": False, "items": []},  # replié par défaut (sinon la section Environnement est inaccessible)
-            "Environnement": {"expanded": False, "items": []},
+            "Parameters": {"expanded": True, "items": []},
+            "Agents": {"expanded": False, "items": []},
+            "Environment": {"expanded": False, "items": []},
         }
 
         # Scroll
@@ -311,9 +311,25 @@ class LeftPanelTree:
         self.section_headers = {}
         self.param_value_rects = {}
         self.agent_checkboxes = []
-        self.cl_buttons = {}       # (side, matter) -> rect (section Environnement)
-        self._agents_cl = {}       # side -> "TORIC" | "NEUMANN" (CL agents)
+        self.cl_buttons = {}       # (side, matter) -> rect
+        self.wall_buttons = {}     # side -> rect (AGENT_STOP/AGENT_REBOUNCE)
+        self._agents_cl = {}       # side -> "TORIC" | "SOLID"
         self.on_cl_change = None    # callback(side, matter, nouvelle_valeur)
+
+        # Onglets du panneau gauche : 'params' (défaut) ou 'agents'
+        self.active_tab = 'params'
+        self.tab_rects = {}        # 'params'/'agents' -> rect
+
+        # Parameters tab: collapsible sub-sections
+        self.param_groups = {
+            "Simulation":  ["TEST_NAME", "SEED", "MAX_ITERATIONS", "DISPLAY_REFRESH_FPS", "MAX_SELECTED_SBN"],
+            "Agents":      ["NUM_AGENTS", "BASE_ENERGY", "DIVISION_ENERGY", "DISTANCE_VISION", "VISION_ANGLE",
+                            "CONSUME_QTY", "VALEUR_MAX_POIDS", "COST_NEURON", "COST_MOVE", "COST_ROTATE",
+                            "COST_EAT", "COST_METABOLISM"],
+            "Evolution":   ["PROBA_EVOLUTION", "PROBA_INSERTION", "PROBA_DELETION"],
+            "Environment": ["DX_GRID", "NUM_MD1_INIT", "MD1_INIT_QTY", "D_MD1", "D_MD2", "K_MD1_MD2"],
+        }
+        self.param_groups_expanded = {name: True for name in self.param_groups}
 
     def update_rect(self, x, y, w, h):
         """Repositionne/redimensionne le panneau (redimensionnement utilisateur)."""
@@ -326,21 +342,27 @@ class LeftPanelTree:
     _MAX_AGENTS_DISPLAY = 40
 
     def _content_height(self):
+        """Hauteur de contenu selon l'onglet actif."""
+        row_h = 20
+        if self.active_tab == 'agents':
+            n = min(len(self.sections["Agents"]["items"]), self._MAX_AGENTS_DISPLAY)
+            h = 18 * max(1, n)
+            if len(self.sections["Agents"]["items"]) > self._MAX_AGENTS_DISPLAY:
+                h += 18
+            return h
+        # Parameters tab: collapsible sub-sections
         h = 0
-        for name in ("Paramètres", "Agents", "Environnement"):
-            h += 28  # header (24) + gap (4)
-            if not self.sections[name]["expanded"]:
+        for group_name, keys in self.param_groups.items():
+            h += 22 + 2  # header
+            if not self.param_groups_expanded[group_name]:
                 continue
-            if name == "Paramètres":
-                h += 20 * max(1, len(self.params)) + 4
-            elif name == "Agents":
-                n = min(len(self.sections["Agents"]["items"]), self._MAX_AGENTS_DISPLAY)
-                h += 18 * max(1, n)
-                if len(self.sections["Agents"]["items"]) > self._MAX_AGENTS_DISPLAY:
-                    h += 18  # ligne "…"
+            if group_name == "Environment":
+                h += row_h * len(keys) + 4
+                # Matter BC: 4 sides x (label + 2 MD1/MD2 buttons + optional Dirichlet value)
+                # Agent BC: 4 sides x (label + 1 button + optional wall)
+                h += 4 * (row_h + 2 * row_h + row_h + 2) + 4 * (row_h + row_h + row_h + 2)
             else:
-                # Environnement : 4 bords × (label + 3 boutons) + ligne Dirichlet
-                h += 24 + 4 * 4 * 22 + 20
+                h += row_h * len(keys) + 4
         return h
 
     # ------------------------------------------------------------------
@@ -348,6 +370,9 @@ class LeftPanelTree:
     # ------------------------------------------------------------------
     def handle_event(self, event, ui_manager):
         """Retourne True si l'événement a été consommé par le panneau."""
+        # Recalcule scroll_max pour l'onglet actif (un onglet vient peut-être de changer)
+        self.scroll_max = max(0, self._content_height() - (self.rect.h - 56))
+
         # --- Scrollbar : drag du curseur / clic sur la piste ---
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             if self.scrollbar_rect and self.scrollbar_rect.collidepoint(event.pos):
@@ -366,9 +391,11 @@ class LeftPanelTree:
             return True
 
         # --- Molette dans le panneau ---
-        if event.type == pygame.MOUSEWHEEL and self.rect.collidepoint(event.pos if hasattr(event, "pos") else (0, 0)):
-            self.scroll_y = max(0, min(self.scroll_max, self.scroll_y - event.y * 22))
-            return True
+        if event.type == pygame.MOUSEWHEEL:
+            pos = event.pos if hasattr(event, "pos") else pygame.mouse.get_pos()
+            if self.rect.collidepoint(pos):
+                self.scroll_y = max(0, min(self.scroll_max, self.scroll_y - event.y * 22))
+                return True
 
         # --- Saisie du champ d'édition actif ---
         if self.editing_key is not None:
@@ -406,33 +433,54 @@ class LeftPanelTree:
             return True  # autres événements ignorés pendant l'édition
 
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            # Header de section : replier/déplier
-            for name, rect in self.section_headers.items():
+            # Tabs: Parameters / Agents
+            for name, rect in self.tab_rects.items():
                 if rect.collidepoint(event.pos):
-                    was = self.sections[name]["expanded"]
-                    self.sections[name]["expanded"] = not was
-                    # Scroller pour que TOUT le contenu déplié soit visible
-                    if not was:
-                        contenu = {"Paramètres": 20 * max(1, len(self.params)) + 4,
+                    self.active_tab = 'params' if name == 'Parameters' else 'agents'
+                    self.scroll_y = 0
+                    return True
+            # Sous-sections dépliables (group:*) — même si le header est hors de la zone visible,
+            # il reste enregistré dans section_headers donc le clic fonctionne toujours
+            for key, rect in self.section_headers.items():
+                if key.startswith("group:") and rect.collidepoint(event.pos):
+                    gname = key.split(":", 1)[1]
+                    self.param_groups_expanded[gname] = not self.param_groups_expanded[gname]
+                    # Ajuste le scroll pour rendre le contenu visible
+                    if self.param_groups_expanded[gname]:
+                        contenu = {"Simulation": 20 * max(1, len(self.params)) + 4,
                                    "Agents": 18 * min(len(self.sections["Agents"]["items"]), self._MAX_AGENTS_DISPLAY) + 18,
-                                   "Environnement": 24 + 4 * 4 * 22 + 20}[name]
-                        visible_h = self.rect.h - 30
-                        cible = rect.y + contenu - visible_h + 28
+                                   "Evolution": 20 * len(self.param_groups["Evolution"]) + 4,
+                                   "Environment": 24 + 4 * 4 * 22 + 20}[gname]
+                        visible_h = self.rect.h - 56
+                        cible = rect.y + contenu - visible_h + 54
                         # Recalcule scroll_max en supposant la section dépliée
                         h = 0
-                        for nm in ("Paramètres", "Agents", "Environnement"):
-                            h += 28
-                            exp = self.sections[nm]["expanded"] or nm == name
-                            if not exp:
+                        for nm in ("Simulation", "Agents", "Evolution", "Environment"):
+                            h += 22 + 2
+                            if not (self.param_groups_expanded[nm] or nm == gname):
                                 continue
-                            if nm == "Paramètres":
-                                h += 20 * max(1, len(self.params)) + 4
-                            elif nm == "Agents":
-                                h += 18 * min(len(self.sections["Agents"]["items"]), self._MAX_AGENTS_DISPLAY) + 18
+                            if nm == "Environment":
+                                h += 20 * len(self.param_groups["Environment"]) + 4
+                                h += 4 * (20 + 2*20 + 20 + 2) + 4 * (20 + 20 + 20 + 2)
                             else:
-                                h += 24 + 4 * 4 * 22
+                                h += 20 * len(self.param_groups[nm]) + 4
                         self.scroll_max = max(0, h - visible_h)
                         self.scroll_y = min(self.scroll_max, max(0, cible))
+                    return True
+            # CL matière / agents : boutons cyclables
+            for (side_key, matter), rect in self.cl_buttons.items():
+                if rect.collidepoint(event.pos):
+                    self._cycle_cl(side_key, matter)
+                    return True
+            # Wall agents (AGENT_STOP/AGENT_REBOUNCE)
+            for side_key, rect in self.wall_buttons.items():
+                if rect.collidepoint(event.pos):
+                    wall_key = f"CL_AGENTS_WALL_{side_key}"
+                    cur = self.params.get(wall_key, "AGENT_STOP")
+                    new = "AGENT_REBOUNCE" if cur == "AGENT_STOP" else "AGENT_STOP"
+                    self.params[wall_key] = new
+                    if self.on_cl_change:
+                        self.on_cl_change(side_key, "Wall", new)
                     return True
             # Valeur de paramètre : commencer une NOUVELLE saisie (champ vide)
             for key, rect in self.param_value_rects.items():
@@ -444,7 +492,7 @@ class LeftPanelTree:
             for agent_id, rect, _ in self.agent_checkboxes:
                 if rect.collidepoint(event.pos):
                     return ("agent_toggle", agent_id)
-            # Boutons de conditions aux limites (section Environnement)
+            # Boundary condition buttons (Environment section)
             for (side_key, matter), rect in self.cl_buttons.items():
                 if rect.collidepoint(event.pos):
                     self._cycle_cl(side_key, matter)
@@ -453,7 +501,7 @@ class LeftPanelTree:
         return False
 
     def _track_rect(self):
-        return pygame.Rect(self.rect.right - 7, self.rect.y + 28, 5, self.rect.h - 34)
+        return pygame.Rect(self.rect.right - 7, self.rect.y + 54, 5, self.rect.h - 60)
 
     def _drag_scroll(self, mouse_y):
         track = self._track_rect()
@@ -514,33 +562,35 @@ class LeftPanelTree:
         pygame.draw.line(screen, COLOR_BORDER, (self.rect.x, self.rect.y),
                          (self.rect.right, self.rect.y), 2)
 
-        title = self.font_title.render("EXPLORATEUR", True, COLOR_TEXT)
+        title = self.font_title.render("EXPLORER", True, COLOR_TEXT)
         screen.blit(title, (self.rect.x + 10, self.rect.y + 6))
 
+        # --- Tab bar (Parameters / Agents) ---
+        self.tab_rects = {}
+        tab_w = (self.rect.w - 20) // 2
+        for i, name in enumerate(("Parameters", "Agents")):
+            r = pygame.Rect(self.rect.x + 10 + i * (tab_w + 4), self.rect.y + 26, tab_w, 22)
+            self.tab_rects[name] = r
+            active = (self.active_tab == ('params' if name == 'Parameters' else 'agents'))
+            pygame.draw.rect(screen, COLOR_TAB_ACTIVE if active else COLOR_TAB_INACTIVE,
+                             r, border_radius=4)
+            lbl = self.font.render(name, True, COLOR_TEXT if active else COLOR_TEXT_DIM)
+            screen.blit(lbl, (r.x + 8, r.y + 3))
+
         # Scroll : bornes calculées AVANT le dessin (hauteur de contenu réelle)
-        clip_rect = pygame.Rect(self.rect.x, self.rect.y + 26, self.rect.w, self.rect.h - 30)
+        clip_rect = pygame.Rect(self.rect.x, self.rect.y + 52, self.rect.w, self.rect.h - 56)
         content_h = self._content_height()
         visible_h = clip_rect.h
         self.scroll_max = max(0, content_h - visible_h)
         self.scroll_y = min(self.scroll_y, self.scroll_max)
         screen.set_clip(clip_rect)
 
-        y = self.rect.y + 28 - self.scroll_y
+        y = self.rect.y + 54 - self.scroll_y
 
-        if "Paramètres" in self.sections:
-            y = self._draw_section_header(screen, "Paramètres", y)
-            if self.sections["Paramètres"]["expanded"]:
-                y = self._draw_params(screen, y)
-
-        if "Agents" in self.sections:
-            y = self._draw_section_header(screen, "Agents", y)
-            if self.sections["Agents"]["expanded"]:
-                y = self._draw_agents(screen, y)
-
-        if "Environnement" in self.sections:
-            y = self._draw_section_header(screen, "Environnement", y)
-            if self.sections["Environnement"]["expanded"]:
-                y = self._draw_environment(screen, y)
+        if self.active_tab == 'params':
+            y = self._draw_params(screen, y)
+        else:
+            y = self._draw_agents(screen, y)
 
         screen.set_clip(None)
 
@@ -572,19 +622,75 @@ class LeftPanelTree:
         return y + header_h + 4
 
     def _draw_params(self, screen, y):
-        """Paramètres : label (petit) + valeur sur la même ligne, sans recouvrement."""
+        """Parameters tab: collapsible sub-sections (Simulation / Agents /
+        Evolution / Environment) + matter and agent BC in Environment."""
         self.param_value_rects = {}
+        self.cl_buttons = {}
+        self.wall_buttons = {}
         row_h = 20
-        for key, value in self.params.items():
-            # Les paramètres de conditions aux limites (CL_*) sont dans la section Environnement
-            if key.startswith("CL_"):
+        # Groupes Simulation, Agents, Evolution (paramètres simples)
+        for group_name in ("Simulation", "Agents", "Evolution"):
+            # Header de sous-section dépliable
+            header_h = 22
+            rect = pygame.Rect(self.rect.x + 8, y, self.rect.w - 16, header_h)
+            self.section_headers[f"group:{group_name}"] = rect
+            expanded = self.param_groups_expanded[group_name]
+            if not (rect.bottom < self.rect.y + 52 or rect.top > self.rect.bottom - 4):
+                color = COLOR_BG_HEADER if expanded else (20, 25, 35)
+                pygame.draw.rect(screen, color, rect, border_radius=3)
+                arrow = "▼" if expanded else "►"
+                screen.blit(self.font.render(arrow, True, COLOR_TEXT_DIM), (self.rect.x + 14, y + 3))
+                screen.blit(self.font.render(group_name, True, COLOR_TEXT), (self.rect.x + 30, y + 3))
+            y += header_h + 2
+            if not expanded:
                 continue
-            if y + row_h < self.rect.y + 26 or y > self.rect.bottom:
+            for key in self.param_groups[group_name]:
+                value = self.params.get(key)
+                if value is None:
+                    continue
+                if y + row_h < self.rect.y + 54 or y > self.rect.bottom:
+                    y += row_h
+                    continue
+                screen.blit(self.font_small.render(f"{key}:", True, COLOR_TEXT_DIM), (self.rect.x + 18, y + 4))
+                val_rect = pygame.Rect(self.rect.x + 100, y, self.rect.w - 120, row_h)
+                if self.editing_key == key:
+                    pygame.draw.rect(screen, (30, 40, 60), val_rect, border_radius=3)
+                    txt = self.editing_text + "|"
+                    color = COLOR_GREEN
+                else:
+                    txt = str(value)
+                    color = COLOR_TEXT
+                    if val_rect.collidepoint(pygame.mouse.get_pos()):
+                        pygame.draw.rect(screen, (30, 38, 55), val_rect, border_radius=3)
+                screen.blit(self.font_small.render(txt, True, color), (val_rect.x + 6, y + 4))
+                self.param_value_rects[key] = val_rect
+                y += row_h
+            y += 4
+
+        # Environment sub-section: RD parameters + matter BC + agent BC
+        header_h = 22
+        rect = pygame.Rect(self.rect.x + 8, y, self.rect.w - 16, header_h)
+        self.section_headers["group:Environment"] = rect
+        expanded = self.param_groups_expanded["Environment"]
+        if not (rect.bottom < self.rect.y + 52 or rect.top > self.rect.bottom - 4):
+            color = COLOR_BG_HEADER if expanded else (20, 25, 35)
+            pygame.draw.rect(screen, color, rect, border_radius=3)
+            arrow = "▼" if expanded else "►"
+            screen.blit(self.font.render(arrow, True, COLOR_TEXT_DIM), (self.rect.x + 14, y + 3))
+            screen.blit(self.font.render("Environment", True, COLOR_TEXT), (self.rect.x + 30, y + 3))
+        y += header_h + 2
+        if not expanded:
+            return y
+
+        # Environment parameters (DX_GRID, etc.)
+        for key in self.param_groups["Environment"]:
+            value = self.params.get(key)
+            if value is None:
+                continue
+            if y + row_h < self.rect.y + 54 or y > self.rect.bottom:
                 y += row_h
                 continue
-            # Label petit, à gauche — ne chevauche jamais la valeur
-            screen.blit(self.font_small.render(f"{key}:", True, COLOR_TEXT_DIM), (self.rect.x + 14, y + 4))
-            # Valeur cliquable à droite
+            screen.blit(self.font_small.render(f"{key}:", True, COLOR_TEXT_DIM), (self.rect.x + 18, y + 4))
             val_rect = pygame.Rect(self.rect.x + 100, y, self.rect.w - 120, row_h)
             if self.editing_key == key:
                 pygame.draw.rect(screen, (30, 40, 60), val_rect, border_radius=3)
@@ -598,6 +704,74 @@ class LeftPanelTree:
             screen.blit(self.font_small.render(txt, True, color), (val_rect.x + 6, y + 4))
             self.param_value_rects[key] = val_rect
             y += row_h
+        y += 4
+
+        # CL matière : 4 bords × (MD1, MD2) avec type + valeur Dirichlet
+        sides = [("X - Gauche", "LEFT"), ("X - Droite", "RIGHT"), ("Y - Haut", "TOP"), ("Y - Bas", "BOTTOM")]
+        for label, side_key in sides:
+            if y + row_h < self.rect.y + 54 or y > self.rect.bottom:
+                y += row_h
+                continue
+            screen.blit(self.font.render(label, True, COLOR_TEXT), (self.rect.x + 18, y + 3))
+            y += row_h
+            for matter in ("MD1", "MD2"):
+                if y + row_h < self.rect.y + 54 or y > self.rect.bottom:
+                    y += row_h
+                    continue
+                cur = self._get_cl(side_key, matter)
+                # Bouton de cycle (Torique/Neumann/Dirichlet)
+                btn_rect = pygame.Rect(self.rect.x + 18, y, 110, row_h)
+                color = COLOR_BUTTON_HOVER if btn_rect.collidepoint(pygame.mouse.get_pos()) else COLOR_BG_HEADER
+                pygame.draw.rect(screen, color, btn_rect, border_radius=3)
+                screen.blit(self.font_small.render(f"{matter}: {cur}", True, COLOR_TEXT), (btn_rect.x + 4, y + 4))
+                self.cl_buttons[(side_key, matter)] = btn_rect
+                y += row_h
+                # Si Dirichlet : champ de valeur éditable
+                if cur == "DIRICHLET":
+                    if y + row_h < self.rect.y + 54 or y > self.rect.bottom:
+                        y += row_h
+                        continue
+                    val_key = f"CL_DIRICHLET_{side_key}_{matter}"
+                    screen.blit(self.font_small.render(f"val {matter}:", True, COLOR_TEXT_DIM), (self.rect.x + 30, y + 4))
+                    val_rect = pygame.Rect(self.rect.x + 100, y, self.rect.w - 120, row_h)
+                    if self.editing_key == val_key:
+                        pygame.draw.rect(screen, (30, 40, 60), val_rect, border_radius=3)
+                        txt = self.editing_text + "|"
+                        color = COLOR_GREEN
+                    else:
+                        txt = str(self.params.get(val_key, 0.0))
+                        color = COLOR_TEXT
+                        if val_rect.collidepoint(pygame.mouse.get_pos()):
+                            pygame.draw.rect(screen, (30, 38, 55), val_rect, border_radius=3)
+                    screen.blit(self.font_small.render(txt, True, color), (val_rect.x + 6, y + 4))
+                    self.param_value_rects[val_key] = val_rect
+                    y += row_h
+            y += 2
+
+        # Agent BC: 4 sides x (TORIC/SOLID + AGENT_STOP/AGENT_REBOUNCE)
+        for label, side_key in sides:
+            if y + row_h < self.rect.y + 54 or y > self.rect.bottom:
+                y += row_h
+                continue
+            screen.blit(self.font.render(label, True, COLOR_TEXT), (self.rect.x + 18, y + 3))
+            y += row_h
+            cur = self._get_cl(side_key, "Agents")
+            btn_rect = pygame.Rect(self.rect.x + 18, y, 130, row_h)
+            color = COLOR_BUTTON_HOVER if btn_rect.collidepoint(pygame.mouse.get_pos()) else COLOR_BG_HEADER
+            pygame.draw.rect(screen, color, btn_rect, border_radius=3)
+            screen.blit(self.font_small.render(f"Agents: {cur}", True, COLOR_TEXT), (btn_rect.x + 4, y + 4))
+            self.cl_buttons[(side_key, "Agents")] = btn_rect
+            y += row_h
+            if cur == "SOLID":
+                wall_key = f"CL_AGENTS_WALL_{side_key}"
+                wall_val = self.params.get(wall_key, "AGENT_STOP")
+                wbtn_rect = pygame.Rect(self.rect.x + 18, y, 130, row_h)
+                wcolor = COLOR_BUTTON_HOVER if wbtn_rect.collidepoint(pygame.mouse.get_pos()) else COLOR_BG_HEADER
+                pygame.draw.rect(screen, wcolor, wbtn_rect, border_radius=3)
+                screen.blit(self.font_small.render(f"paroi: {wall_val}", True, COLOR_TEXT), (wbtn_rect.x + 4, y + 4))
+                self.wall_buttons[side_key] = wbtn_rect
+                y += row_h
+            y += 2
         return y
 
     def _draw_agents(self, screen, y):
@@ -630,14 +804,14 @@ class LeftPanelTree:
         return y
 
     # ------------------------------------------------------------------
-    # Section Environnement : conditions aux limites
+    # Environment section: boundary conditions
     # ------------------------------------------------------------------
-    # Choix par bord : MD1 et MD2 → TORIC / NEUMANN / DIRICHLET ; Agents → TORIC / NEUMANN
+    # Per-side choices: MD1 and MD2 → TORIC / NEUMANN / DIRICHLET ; Agents → TORIC / SOLID
     _CL_CHOICES_MATTER = ["TORIC", "NEUMANN", "DIRICHLET"]
-    _CL_CHOICES_AGENTS = ["TORIC", "NEUMANN"]
+    _CL_CHOICES_AGENTS = ["TORIC", "SOLID"]
 
     def _draw_environment(self, screen, y):
-        """Section Environnement : 4 bords × (MD1, MD2, Agents) avec boutons cyclables."""
+        """Environment section: 4 sides x (MD1, MD2, Agents) with cycling buttons."""
         self.cl_buttons = {}  # (side, matter) -> rect
         row_h = 22
         sides = [
@@ -690,6 +864,8 @@ class LeftPanelTree:
             idx = choices.index(cur) if cur in choices else 0
             new = choices[(idx + 1) % len(choices)]
             self._agents_cl[side_key] = new
+            # Synchronise PARAMS pour que _build_agents_cl() retourne la bonne valeur
+            self.params[f"CL_AGENTS_{side_key}"] = new
             if self.on_cl_change:
                 self.on_cl_change(side_key, matter, new)
         else:

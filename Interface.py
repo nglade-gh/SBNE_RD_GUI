@@ -13,31 +13,19 @@ def draw_dashboard(screen, clock, pop, total_steps, mean_nodes, params, width, d
     temps_txt = f"{minutes:02d}:{secondes:02d}" # Formatage 00:00
 
     # Informations à afficher
+    # (MODE_FOOD : paramètre obsolète de l'ancienne physique nourriture — retiré)
     fps = int(clock.get_fps())
-    mode_food = params.get("MODE_FOOD", 1)
-    if mode_food == 1:
-        mode_txt = "Photosynthèse" 
-    elif mode_food == 2:
-        mode_txt = "Alimentation" 
-    else:
-        mode_txt = "Mixte"
-    
-    # Rendu des textes
-    txt_test = font.render(f"TEST: {params['TEST_NAME']}", True, (255, 255, 255))
     txt_pop  = font.render(f"POPULATION: {pop}", True, (0, 255, 100) if pop > 0 else (255, 50, 50))
     txt_step = font.render(f"STEPS: {total_steps}", True, (200, 200, 200))
-    txt_mode = font.render(f"MODE: {mode_txt}", True, (100, 200, 255))
     txt_neurones = font.render(f"NOEUDS MOY: {mean_nodes:.1f}", True, (200, 150, 255))
     txt_fps  = font.render(f"FPS: {fps}", True, (255, 255, 0))
     txt_time = font.render(f"TIME: {temps_txt}", True, (255, 255, 255))
 
-    # Positionnement sur le bandeau
-    screen.blit(txt_test, (20, 15))
-    screen.blit(txt_mode, (250*1.4, 15))
-    screen.blit(txt_step, (250*2, 15))
-    screen.blit(txt_pop,  (250*2.5, 15))
-    screen.blit(txt_neurones, (250*3.25, 15))
-    screen.blit(txt_time, (250*4, 15))
+    # Positionnement sur le bandeau (TEST/MODE retirés)
+    screen.blit(txt_step, (20, 15))
+    screen.blit(txt_pop,  (250*1.4, 15))
+    screen.blit(txt_neurones, (250*2.5, 15))
+    screen.blit(txt_time, (250*3.5, 15))
     screen.blit(txt_fps,  (width-100, 15))
 
 def show_graphics_off(screen, font, width, height, is_paused, dashboard_size):

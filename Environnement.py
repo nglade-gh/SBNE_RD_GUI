@@ -33,7 +33,7 @@ from evolution_tracker import save_network_state, close_all_connections
 from GUIInterface import ConsoleLog, TabButton, LeftPanelTree, MenuOverlay
 import pickle
 
-# Paramètres d'origine (référence — sauvegardés dans ~/.sbne_rd/origin_params.json)
+# Original parameters (reference — saved in ~/.sbne_rd/origin_params.json)
 _ORIGINAL_PARAMS = {
     "TEST_NAME": "RD_MD1_MD2_reaction_diffusion",
     "SEED": 42,
@@ -127,21 +127,22 @@ PARAMS = {
     "K_MD1_MD2": 0.1,       # vitesse de conversion MD1→MD2 (s⁻¹)
     "NUM_MD1_INIT": 10,     # dépôts initiaux de MD1
     "MD1_INIT_QTY": 500.0,  # quantité par dépôt initial (px²·énergie)
-    # --- Conditions aux limites (TORIC / NEUMANN / DIRICHLET) ---
-    # Pour chaque bord : MD1, MD2, agents. Format : "TORIC" | "NEUMANN" | "DIRICHLET"
-    "CL_MD1_LEFT": "TORIC",
-    "CL_MD1_RIGHT": "TORIC",
-    "CL_MD1_TOP": "TORIC",
-    "CL_MD1_BOTTOM": "TORIC",
-    "CL_MD2_LEFT": "TORIC",
-    "CL_MD2_RIGHT": "TORIC",
-    "CL_MD2_TOP": "TORIC",
-    "CL_MD2_BOTTOM": "TORIC",
-    "CL_AGENTS_LEFT": "TORIC",   # TORIC ou NEUMANN (imperméable)
-    "CL_AGENTS_RIGHT": "TORIC",
-    "CL_AGENTS_TOP": "TORIC",
-    "CL_AGENTS_BOTTOM": "TORIC",
-    "CL_DIRICHLET_VALUE": 0.0,   # valeur fixe pour les CL Dirichlet
+    # --- Conditions aux limites matière (TORIC / NEUMANN / DIRICHLET) ---
+    "CL_MD1_LEFT": "TORIC", "CL_MD1_RIGHT": "TORIC",
+    "CL_MD1_TOP": "TORIC", "CL_MD1_BOTTOM": "TORIC",
+    "CL_MD2_LEFT": "TORIC", "CL_MD2_RIGHT": "TORIC",
+    "CL_MD2_TOP": "TORIC", "CL_MD2_BOTTOM": "TORIC",
+    # Valeur Dirichlet PAR BORD et PAR MATIÈRE (MD1, MD2) — défaut 0
+    "CL_DIRICHLET_LEFT_MD1": 0.0, "CL_DIRICHLET_RIGHT_MD1": 0.0,
+    "CL_DIRICHLET_TOP_MD1": 0.0, "CL_DIRICHLET_BOTTOM_MD1": 0.0,
+    "CL_DIRICHLET_LEFT_MD2": 0.0, "CL_DIRICHLET_RIGHT_MD2": 0.0,
+    "CL_DIRICHLET_TOP_MD2": 0.0, "CL_DIRICHLET_BOTTOM_MD2": 0.0,
+    # --- Conditions aux limites agents (TORIC / SOLID) ---
+    "CL_AGENTS_LEFT": "TORIC", "CL_AGENTS_RIGHT": "TORIC",
+    "CL_AGENTS_TOP": "TORIC", "CL_AGENTS_BOTTOM": "TORIC",
+    # Comportement à la paroi solide : "AGENT_STOP" ou "AGENT_REBOUNCE" (bille de billard)
+    "CL_AGENTS_WALL_LEFT": "AGENT_STOP", "CL_AGENTS_WALL_RIGHT": "AGENT_STOP",
+    "CL_AGENTS_WALL_TOP": "AGENT_STOP", "CL_AGENTS_WALL_BOTTOM": "AGENT_STOP",
 }
 
 
@@ -227,10 +228,9 @@ class Simulation:
         self.field = ReactionDiffusion(self.width, self.height, dx_grid,
                                        D_MD1=D_MD1, D_MD2=D_MD2, k_MD1_MD2=k_md1_md2, dt=1.0)
 
-        # --- Conditions aux limites (TORIC / NEUMANN / DIRICHLET) ---
-        self.cl_dirichlet_value = float(params.get("CL_DIRICHLET_VALUE", 0.0))
-        self.cl_agents_x_left = params.get("CL_AGENTS_LEFT", "TORIC")
-        self.cl_agents_x_right = params.get("CL_AGENTS_RIGHT", "TORIC")
+        # --- Conditions aux limites agents (TORIC / SOLID + murs) ---
+        self.cl_agents_x_left = PARAMS.get("CL_AGENTS_LEFT", "TORIC")
+        self.cl_agents_x_right = PARAMS.get("CL_AGENTS_RIGHT", "TORIC")
         self.cl_agents_y_top = params.get("CL_AGENTS_TOP", "TORIC")
         self.cl_agents_y_bottom = params.get("CL_AGENTS_BOTTOM", "TORIC")
 
@@ -262,7 +262,7 @@ class Simulation:
         chemin_json = os.path.join(self.simulation_folder, "parameters.json")
         with open(chemin_json, "w", encoding="utf-8") as f:
             json.dump(params, f, indent=4)
-        print(f"✅ Paramètres sauvegardés dans : {chemin_json}")
+        print(f"✅ Parameters saved to: {chemin_json}")
 
         # --- INITIALISATION PYGAME ---
         self.headless = headless
@@ -343,7 +343,7 @@ class Simulation:
         self.stats_global_energy = []
 
         if not headless:
-            self.console.info(f"Simulation démarrée — {self.num_agents} agents, seed={seed}")
+            self.console.info(f"Simulation started — {self.num_agents} agents, seed={seed}")
 
     # ========================================================================
     # INITIALISATION GUI
@@ -538,18 +538,18 @@ class Simulation:
             if event.ui_element == self.btn_pause:
                 self.is_paused = not self.is_paused
                 if self.is_paused:
-                    self.console.info("Simulation mise en pause")
+                    self.console.info("Simulation paused")
                 else:
-                    self.console.info("Simulation reprise")
+                    self.console.info("Simulation resumed")
             elif event.ui_element == self.btn_stop:
-                self.console.info("Simulation arrêtée par l'utilisateur")
+                self.console.info("Simulation stopped by user")
                 self.running = False
             elif event.ui_element == self.btn_restart:
-                self.console.info("Simulation réinitialisée")
+                self.console.info("Simulation reset")
                 self._reset_simulation()
             elif event.ui_element == self.btn_graphics:
                 self.show_graphics = not self.show_graphics
-                self.console.info(f"Rendu graphique {'activé' if self.show_graphics else 'désactivé'}")
+                self.console.info(f"Graphics rendering {'enabled' if self.show_graphics else 'disabled'}")
             elif event.ui_element == self.btn_menu:
                 self.menu.toggle()
 
@@ -562,9 +562,9 @@ class Simulation:
             if event.key == pygame.K_SPACE:
                 self.is_paused = not self.is_paused
                 if self.is_paused:
-                    self.console.info("Simulation mise en pause")
+                    self.console.info("Simulation paused")
                 else:
-                    self.console.info("Simulation reprise")
+                    self.console.info("Simulation resumed")
             elif event.key == pygame.K_g:
                 self.show_graphics = not self.show_graphics
                 if not self.show_graphics:
@@ -573,13 +573,13 @@ class Simulation:
                 self.vision_cone = not self.vision_cone
             elif event.key == pygame.K_1:
                 self.matter_display = "MD1"
-                self.console.info("Affichage matière : MD1 seule")
+                self.console.info("Matter display: MD1 only")
             elif event.key == pygame.K_2:
                 self.matter_display = "MD2"
-                self.console.info("Affichage matière : MD2 seule")
+                self.console.info("Matter display: MD2 only")
             elif event.key == pygame.K_3:
                 self.matter_display = "BOTH"
-                self.console.info("Affichage matière : MD1 + MD2 (mélange)")
+                self.console.info("Matter display: MD1 + MD2 (blend)")
 
         # Clic gauche : sélectionner un agent / Clic droit : désélectionner
         # (mapping window → coords monde, le monde est mis à l'échelle si panneau redimensionné)
@@ -616,12 +616,12 @@ class Simulation:
                 if path:
                     self._load_params_json(path)
                 else:
-                    self.menu.status_msg = "Chemin vide — tapez un chemin dans le champ."
+                    self.menu.status_msg = "Empty path — type a path in the field."
             elif action == "close":
                 self.menu.visible = False
         except Exception as e:
             self.console.error(f"Menu: {e}")
-            self.menu.status_msg = f"Erreur: {e}"
+            self.menu.status_msg = f"Error: {e}"
 
     def _save_simulation(self, path):
         """Sauvegarde l'état complet (pickle) : agents, champ, stats, RNG."""
@@ -643,13 +643,13 @@ class Simulation:
         }
         with open(path, 'wb') as f:
             pickle.dump(state, f)
-        self.console.info(f"Simulation sauvegardée → {path}")
-        self.menu.status_msg = f"Sauvegardé: {os.path.basename(path)}"
+        self.console.info(f"Simulation saved → {path}")
+        self.menu.status_msg = f"Saved: {os.path.basename(path)}"
 
     def _restore_simulation(self, path):
         """Restaure l'état complet depuis un pickle."""
         if not os.path.exists(path):
-            self.menu.status_msg = f"Fichier introuvable: {path}"
+            self.menu.status_msg = f"File not found: {path}"
             return
         with open(path, 'rb') as f:
             state = pickle.load(f)
@@ -677,21 +677,18 @@ class Simulation:
         """Sauvegarde des paramètres en JSON."""
         with open(path, 'w', encoding='utf-8') as f:
             json.dump(params_dict, f, indent=4)
-        self.console.info(f"Paramètres sauvegardés → {path}")
-        self.menu.status_msg = f"Sauvegardé: {os.path.basename(path)}"
+        self.console.info(f"Parameters saved → {path}")
+        self.menu.status_msg = f"Saved: {os.path.basename(path)}"
 
     def _load_params_json(self, path):
         """Charge des paramètres depuis un JSON et met à jour PARAMS."""
         if not os.path.exists(path):
-            self.menu.status_msg = f"Fichier introuvable: {path}"
+            self.menu.status_msg = f"File not found: {path}"
             return
         with open(path, 'r', encoding='utf-8') as f:
             loaded = json.load(f)
         for k, v in loaded.items():
             PARAMS[k] = v
-        # Synchronise les attributs calculés
-        if "CL_DIRICHLET_VALUE" in loaded:
-            self.cl_dirichlet_value = float(loaded["CL_DIRICHLET_VALUE"])
         # Met à jour le champ si les paramètres RD ont changé
         self.field = ReactionDiffusion(self.width, self.height,
                                        float(PARAMS.get("DX_GRID", 20.0)),
@@ -703,14 +700,14 @@ class Simulation:
             for side in ("LEFT", "RIGHT", "TOP", "BOTTOM"):
                 self.left_panel._agents_cl[side] = PARAMS.get(f"CL_AGENTS_{side}", "TORIC")
                 setattr(self, f"cl_agents_{side.lower()}", PARAMS.get(f"CL_AGENTS_{side}", "TORIC"))
-        self.console.info(f"Paramètres chargés ← {path}")
-        self.menu.status_msg = f"Chargé: {os.path.basename(path)}"
+        self.console.info(f"Parameters loaded ← {path}")
+        self.menu.status_msg = f"Loaded: {os.path.basename(path)}"
 
     def _on_param_change(self, key, value):
         """Callback : un paramètre a été édité dans le panneau gauche.
         left_panel.params est PARAMS (même référence), donc la valeur y est déjà.
         Synchronise les attributs calculés (CL Dirichlet)."""
-        self.console.info(f"Paramètre modifié : {key} = {value}")
+        self.console.info(f"Parameter changed: {key} = {value}")
         if key == "CL_DIRICHLET_VALUE":
             self.cl_dirichlet_value = float(value)
 
@@ -724,7 +721,7 @@ class Simulation:
         """Bascule la sélection d'un agent (checkbox du panneau ou clic monde)."""
         if agent_id in self.selected_agents:
             self.selected_agents.remove(agent_id)
-            self.console.info(f"Agent {agent_id} désélectionné")
+            self.console.info(f"Agent {agent_id} deselected")
         else:
             if len(self.selected_agents) >= self.max_selected_sbn:
                 self.console.error(
@@ -904,54 +901,61 @@ class Simulation:
                 agent.eat(victim)
 
         # Diffusion-réaction de la matière MD1/MD2 (+ clamp des artefacts numériques négatifs)
-        cl_md1 = self._build_cl('CL_MD1')
-        cl_md2 = self._build_cl('CL_MD2')
+        cl_md1 = self._build_matter_cl('CL_MD1')
+        cl_md2 = self._build_matter_cl('CL_MD2')
         self.field.step(cl_md1=cl_md1, cl_md2=cl_md2)
         np.maximum(self.field.MD1, 0.0, out=self.field.MD1)
         np.maximum(self.field.MD2, 0.0, out=self.field.MD2)
 
-        # CL agents : bloquer aux bords imperméables
-        if self.cl_agents_x_left == "NEUMANN" or self.cl_agents_x_right == "NEUMANN" or \
-           self.cl_agents_y_top == "NEUMANN" or self.cl_agents_y_bottom == "NEUMANN":
+        # CL agents : bloquer aux bords solides
+        if self.cl_agents_x_left == "SOLID" or self.cl_agents_x_right == "SOLID" or \
+           self.cl_agents_y_top == "SOLID" or self.cl_agents_y_bottom == "SOLID":
             for agent in self.agents:
-                if self.cl_agents_x_left == "NEUMANN":
+                if self.cl_agents_x_left == "SOLID":
                     agent.x = max(agent.x, 1.0)
-                if self.cl_agents_x_right == "NEUMANN":
+                if self.cl_agents_x_right == "SOLID":
                     agent.x = min(agent.x, self.width - 1.0)
-                if self.cl_agents_y_top == "NEUMANN":
+                if self.cl_agents_y_top == "SOLID":
                     agent.y = max(agent.y, 1.0)
-                if self.cl_agents_y_bottom == "NEUMANN":
+                if self.cl_agents_y_bottom == "SOLID":
                     agent.y = min(agent.y, self.height - 1.0)
 
         self.agents = [a for a in self.agents if a.alive]
         self.agents.extend(new_enfants)
 
-    def _build_cl(self, prefix):
-        """Construit le dict de conditions aux limites pour MD1 ou MD2."""
-        v = self.cl_dirichlet_value
-        def cl(side):
-            val = PARAMS.get(f"{prefix}_{side}", "TORIC")
-            if val == "DIRICHLET":
-                return ("DIRICHLET", v)
-            return val  # "TORIC" ou "NEUMANN"
+    def _build_cl(self, prefix, side):
+        """Condition aux limites pour une matière (MD1/MD2) et un bord."""
+        val = PARAMS.get(f"{prefix}_{side}", "TORIC")
+        if val == "DIRICHLET":
+            return ("DIRICHLET", PARAMS.get(f"CL_DIRICHLET_{side}_{prefix}", 0.0))
+        return val  # "TORIC" ou "NEUMANN"
+
+    def _build_matter_cl(self, prefix):
+        """Construit le dict de CL pour une matière (MD1 ou MD2)."""
         return {
-            'x_left': cl('LEFT'), 'x_right': cl('RIGHT'),
-            'y_top': cl('TOP'), 'y_bottom': cl('BOTTOM'),
+            'x_left': self._build_cl(prefix, 'LEFT'),
+            'x_right': self._build_cl(prefix, 'RIGHT'),
+            'y_top': self._build_cl(prefix, 'TOP'),
+            'y_bottom': self._build_cl(prefix, 'BOTTOM'),
         }
 
     def _build_agents_cl(self):
-        """Construit le dict des CL agents ('x_left','x_right','y_top','y_bottom')."""
+        """Construit le dict des CL agents (TORIC/SOLID + murs AGENT_STOP/AGENT_REBOUNCE)."""
         return {
             'x_left': PARAMS.get('CL_AGENTS_LEFT', 'TORIC'),
             'x_right': PARAMS.get('CL_AGENTS_RIGHT', 'TORIC'),
             'y_top': PARAMS.get('CL_AGENTS_TOP', 'TORIC'),
             'y_bottom': PARAMS.get('CL_AGENTS_BOTTOM', 'TORIC'),
+            'wall_left': PARAMS.get('CL_AGENTS_WALL_LEFT', 'AGENT_STOP'),
+            'wall_right': PARAMS.get('CL_AGENTS_WALL_RIGHT', 'AGENT_STOP'),
+            'wall_top': PARAMS.get('CL_AGENTS_WALL_TOP', 'AGENT_STOP'),
+            'wall_bottom': PARAMS.get('CL_AGENTS_WALL_BOTTOM', 'AGENT_STOP'),
         }
 
         # Vérifier extinction → pause (pas d'arrêt : l'utilisateur peut
         # modifier les paramètres et relancer avec le bouton Restart)
         if len(self.agents) == 0:
-            self.console.warning("Tous les agents sont morts — simulation en pause")
+            self.console.warning("All agents dead — simulation paused")
             self.is_paused = True
 
     # ========================================================================
@@ -1407,7 +1411,7 @@ class Simulation:
                 "stats_node_activated": self.stats_node_activated,
                 "stats_global_energy": self.stats_global_energy
             }, f)
-        print(f"✅ Statistiques sauvegardées dans : {stats_path}")
+        print(f"✅ Statistics saved to: {stats_path}")
 
         close_all_connections()
         pygame.quit()
