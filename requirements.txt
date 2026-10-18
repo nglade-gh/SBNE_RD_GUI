@@ -1,0 +1,10 @@
+# Dépendances SBNE_GUI (Python 3.10+)
+# Installation : pip install -r requirements.txt
+numpy
+pygame
+pygame_gui==0.6.9
+jsonpatch
+seaborn
+matplotlib
+pandas
+networkx

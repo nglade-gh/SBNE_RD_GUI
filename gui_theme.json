@@ -1,0 +1,61 @@
+{
+    "defaults": {
+        "colours": {
+            "normal_bg": "#2D374B",
+            "hovered_bg": "#3C4B64",
+            "disabled_bg": "#1A202C",
+            "selected_bg": "#2C7A3E",
+            "active_bg": "#1E6B30",
+            "normal_text": "#FFFFFF",
+            "hovered_text": "#FFFFFF",
+            "disabled_text": "#808080",
+            "selected_text": "#FFFFFF",
+            "active_text": "#FFFFFF",
+            "normal_border": "#4A5568",
+            "hovered_border": "#63B3ED",
+            "disabled_border": "#2D374B",
+            "selected_border": "#63B3ED",
+            "active_border": "#63B3ED"
+        }
+    },
+    "button": {
+        "colours": {
+            "normal_bg": "#2D374B",
+            "hovered_bg": "#3C4B64",
+            "disabled_bg": "#1A202C",
+            "selected_bg": "#2C7A3E",
+            "active_bg": "#1E6B30",
+            "normal_text": "#FFFFFF",
+            "hovered_text": "#FFFFFF",
+            "disabled_text": "#808080",
+            "selected_text": "#FFFFFF",
+            "active_text": "#FFFFFF",
+            "normal_border": "#4A5568",
+            "hovered_border": "#63B3ED",
+            "disabled_border": "#2D374B",
+            "selected_border": "#63B3ED",
+            "active_border": "#63B3ED"
+        },
+        "misc": {
+            "shape": "rounded_rectangle",
+            "shape_radius": 5
+        }
+    },
+    "label": {
+        "colours": {
+            "dark_bg": "#101620",
+            "normal_text": "#E2E8F0"
+        }
+    },
+    "horizontal_slider": {
+        "colours": {
+            "normal_bg": "#282D38",
+            "hovered_bg": "#282D38",
+            "normal_text": "#E2E8F0"
+        },
+        "misc": {
+            "shape": "rounded_rectangle",
+            "shape_radius": 5
+        }
+    }
+}
