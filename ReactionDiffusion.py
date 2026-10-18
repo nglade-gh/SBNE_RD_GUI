@@ -86,6 +86,28 @@ def _solve_cyclic(b_diag, a_sub, c_sup, coin_top, coin_bottom, r, cache=None):
     return y - c0[:, None] * z1[None, :] - c1[:, None] * z2[None, :]
 
 
+def _thomas_arrays(b, a, c, r):
+    """Solveur Thomas vectorisé avec tableaux de coefficients (m, n).
+
+    b : diagonale, a : sous-diagonale (a[:, 0] ignoré), c : sur-diagonale (c[:, -1] ignoré).
+    r : membre de droite. Chaque ligne est un système indépendant.
+    """
+    m, n = r.shape
+    cp = np.zeros((m, n))
+    dp = np.zeros((m, n))
+    cp[:, 0] = c[:, 0] / b[:, 0]
+    dp[:, 0] = r[:, 0] / b[:, 0]
+    for i in range(1, n):
+        mm = b[:, i] - a[:, i] * cp[:, i - 1]
+        cp[:, i] = c[:, i] / mm
+        dp[:, i] = (r[:, i] - a[:, i] * dp[:, i - 1]) / mm
+    x = np.zeros((m, n))
+    x[:, n - 1] = dp[:, n - 1]
+    for i in range(n - 2, -1, -1):
+        x[:, i] = dp[:, i] - cp[:, i] * x[:, i + 1]
+    return x
+
+
 class ReactionDiffusion:
     """Grilles MD1/MD2 sur tore avec diffusion-réaction (ADI + Thomas cyclique)."""
 
@@ -181,18 +203,27 @@ class ReactionDiffusion:
         Ainv = np.linalg.inv(A_mat)
         return (b_imp, off_imp, coin, z1, z2, Ainv)
 
-    def step(self):
+    def step(self, cl_md1=None, cl_md2=None):
         """Un pas de temps dt : diffusion + réaction MD1→MD2 (ADI Peaceman-Rachford).
 
         Conservation exacte : la perte totale de MD1 par réaction est mesurée
-        et ajoutée intégralement à MD2 (répartie proportionnellement à MD1^{n+1})."""
+        et ajoutée intégralement à MD2 (répartie proportionnellement à MD1^{n+1}).
+
+        cl_md1/cl_md2 = dict {'x_left','x_right','y_top','y_bottom'} avec valeurs
+        "TORIC" | "NEUMANN" | ("DIRICHLET", valeur) — par défaut tout TORIC.
+        """
+        if cl_md1 is None:
+            cl_md1 = {'x_left': 'TORIC', 'x_right': 'TORIC', 'y_top': 'TORIC', 'y_bottom': 'TORIC'}
+        if cl_md2 is None:
+            cl_md2 = {'x_left': 'TORIC', 'x_right': 'TORIC', 'y_top': 'TORIC', 'y_bottom': 'TORIC'}
+
         # --- MD1 : ∂MD1/∂t = D1∇²MD1 − k·MD1 (réaction incluse dans la matrice implicite) ---
         md1_before = float(self.MD1.sum())
-        self._adi_step(self.MD1, self._cyc_cache1_x, self._cyc_cache1_y, source=None)
+        self._adi_step(self.MD1, self._cyc_cache1_x, self._cyc_cache1_y, source=None, cl=cl_md1)
         md1_loss = md1_before - float(self.MD1.sum())  # perte due à la réaction (la diffusion conserve)
 
         # --- MD2 : ∂MD2/∂t = D2∇²MD2 + k·MD1 (diffusion seule) ---
-        self._adi_step(self.MD2, self._cyc_cache2_x, self._cyc_cache2_y, source=None)
+        self._adi_step(self.MD2, self._cyc_cache2_x, self._cyc_cache2_y, source=None, cl=cl_md2)
 
         # --- Couplage exact : la matière perdue par MD1 va intégralement dans MD2 ---
         if md1_loss > 0:
@@ -203,12 +234,14 @@ class ReactionDiffusion:
                 self.MD2 += md1_loss / self.MD2.size
         self.sim_time += self.dt
 
-    def _adi_step(self, u, cache_x, cache_y, source):
+    def _adi_step(self, u, cache_x, cache_y, source, cl):
         """Un pas ADI complet (2 demi-pas 1D) pour l'équation ∂u/∂t = D∇²u + f(u) + s.
 
         cache_x/cache_y = (b_imp, off_imp, coin, z1, z2, Ainv) précalculés dans
         _build_cyclic_cache (respectivement systèmes de taille cols et rows).
         source = grille source constante au pas (ou None).
+        cl = dict avec clés 'x_left','x_right','y_top','y_bottom' :
+              "TORIC" | "NEUMANN" | ("DIRICHLET", valeur)
         """
         b_imp, off_imp, coin, z1, z2, Ainv = cache_x
         # Coefficients explicites (CN) déduits des implicites :
@@ -217,22 +250,97 @@ class ReactionDiffusion:
         b_exp = 2.0 - b_imp
         off_exp = -off_imp
 
-        # --- Demi-pas x (chaque ligne = un système tridiagonal cyclique) ---
-        rhs = b_exp * u + off_exp * (np.roll(u, 1, axis=1) + np.roll(u, -1, axis=1))
-        # np.roll gère la périodicité ; rien à corriger pour les coins.
+        # --- Demi-pas x (chaque ligne = un système tridiagonal) ---
+        # Pour Dirichlet : fixe les bords AVANT calcul du rhs (la valeur de bord influence les intérieurs)
+        u_src = u
+        if isinstance(cl['x_left'], tuple) and cl['x_left'][0] == "DIRICHLET":
+            u_src = u_src.copy(); u_src[:, 0] = cl['x_left'][1]
+        if isinstance(cl['x_right'], tuple) and cl['x_right'][0] == "DIRICHLET":
+            u_src = u_src.copy(); u_src[:, -1] = cl['x_right'][1]
+
+        rhs = b_exp * u_src + off_exp * (np.roll(u_src, 1, axis=1) + np.roll(u_src, -1, axis=1))
+        # CL non torique : enlève le terme cyclique (valeur réelle de u, pas le bord Dirichlet)
+        if cl['x_left'] != "TORIC":
+            rhs[:, 0] -= off_exp * u[:, -1]
+        if cl['x_right'] != "TORIC":
+            rhs[:, -1] -= off_exp * u[:, 0]
+        # CL Neumann : la réflexion ajoute +c·u[0] au rhs (Laplacien bord = (u[1]-u[0])/dx²)
+        if cl['x_left'] == "NEUMANN":
+            rhs[:, 0] += off_exp * u[:, 0]
+        if cl['x_right'] == "NEUMANN":
+            rhs[:, -1] += off_exp * u[:, -1]
         if source is not None:
             rhs += self.dt * source * 0.5  # source répartie sur les 2 demi-pas x et y
-        u_star = _solve_cyclic(b_imp, off_imp, off_imp, coin, coin, rhs, (z1, z2, Ainv))
+        u_star = self._solve_dir(rhs, cl['x_left'], cl['x_right'], cache_x)
 
         # --- Demi-pas y (chaque colonne = un système ; on transpose) ---
         b_imp_y, off_imp_y, coin_y, z1_y, z2_y, Ainv_y = cache_y
         b_exp_y = 2.0 - b_imp_y
         off_exp_y = -off_imp_y
-        rhs_y = b_exp_y * u_star.T + off_exp_y * (np.roll(u_star.T, 1, axis=1) + np.roll(u_star.T, -1, axis=1))
+        u_star_src = u_star
+        if isinstance(cl['y_top'], tuple) and cl['y_top'][0] == "DIRICHLET":
+            u_star_src = u_star_src.copy(); u_star_src[:, 0] = cl['y_top'][1]
+        if isinstance(cl['y_bottom'], tuple) and cl['y_bottom'][0] == "DIRICHLET":
+            u_star_src = u_star_src.copy(); u_star_src[:, -1] = cl['y_bottom'][1]
+        rhs_y = b_exp_y * u_star_src.T + off_exp_y * (np.roll(u_star_src.T, 1, axis=1) + np.roll(u_star_src.T, -1, axis=1))
+        if cl['y_top'] != "TORIC":
+            rhs_y[:, 0] -= off_exp_y * u_star_src.T[:, -1]
+        if cl['y_bottom'] != "TORIC":
+            rhs_y[:, -1] -= off_exp_y * u_star_src.T[:, 0]
+        if cl['y_top'] == "NEUMANN":
+            rhs_y[:, 0] += off_exp_y * u_star_src.T[:, 0]
+        if cl['y_bottom'] == "NEUMANN":
+            rhs_y[:, -1] += off_exp_y * u_star_src.T[:, -1]
         if source is not None:
             rhs_y += self.dt * source.T * 0.5
-        u_new_T = _solve_cyclic(b_imp_y, off_imp_y, off_imp_y, coin_y, coin_y, rhs_y, (z1_y, z2_y, Ainv_y))
+        u_new_T = self._solve_dir(rhs_y, cl['y_top'], cl['y_bottom'], cache_y)
         u[:] = u_new_T.T
+
+    def _solve_dir(self, r, cl_left, cl_right, cache):
+        """Résout des systèmes tridiagonaux (m lignes) avec conditions aux limites.
+
+        TORIC/TORIC → solveur cyclique. Sinon Thomas standard avec CL.
+        NEUMANN : réflexion (diag bord = 1+c, pas de terme cyclique).
+        DIRICHLET : bord fixe → identité au bord + transfert au voisin.
+        r : (m, n)
+        """
+        if cl_left == "TORIC" and cl_right == "TORIC":
+            b_imp, off_imp, coin, z1, z2, Ainv = cache
+            return _solve_cyclic(b_imp, off_imp, off_imp, coin, coin, r, (z1, z2, Ainv))
+
+        # --- Thomas standard avec CL ---
+        b_imp, off_imp = cache[0], cache[1]
+        m, n = r.shape
+        b = np.full((m, n), b_imp)
+        a = np.full((m, n), off_imp)   # sous-diagonale (a[0] ignoré)
+        c = np.full((m, n), off_imp)   # sur-diagonale (c[n-1] ignoré)
+
+        # CL Neumann : réflexion → diag bord = 1 + c (au lieu de 1 + 2c)
+        # b_imp = 1+2c, off_imp = -c → 1+c = b_imp + off_imp
+        if cl_left == "NEUMANN":
+            b[:, 0] = b_imp + off_imp  # 1 + c
+        if cl_right == "NEUMANN":
+            b[:, n - 1] = b_imp + off_imp
+
+        # CL Dirichlet : bord fixe → identité au bord + transfert au voisin
+        if isinstance(cl_left, tuple) and cl_left[0] == "DIRICHLET":
+            v = cl_left[1]
+            b[:, 0] = 1.0
+            c[:, 0] = 0.0
+            r = r.copy()
+            r[:, 0] = v
+            if n > 1:
+                r[:, 1] -= off_imp * v  # transfert au voisin
+        if isinstance(cl_right, tuple) and cl_right[0] == "DIRICHLET":
+            v = cl_right[1]
+            b[:, n - 1] = 1.0
+            a[:, n - 1] = 0.0
+            r = r.copy()
+            r[:, n - 1] = v
+            if n > 1:
+                r[:, n - 2] -= off_imp * v
+
+        return _thomas_arrays(b, a, c, r)
 
     # ------------------------------------------------------------------
     # Rendu

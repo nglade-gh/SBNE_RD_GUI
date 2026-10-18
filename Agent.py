@@ -45,20 +45,42 @@ class Agent:
         # Quantité de matière (MD1/MD2) consommée par tentative de bouche
         self.consume_qty = consume_qty
 
-    def move(self):
-        # On convertit l'angle en radian pour les calculs
+    def move(self, env_cl=None):
+        """Déplace l'agent. env_cl = dict ('x_left','x_right','y_top','y_bottom'
+        : 'TORIC' ou 'NEUMANN'). Avec Neumann, l'agent est bloqué aux bords."""
         rad = math.radians(self.angle)
-
         dx = self.speed * math.cos(rad)
         dy = self.speed * math.sin(rad)
-
-        # On crée des nouvelles positions
         new_x = self.x + dx
         new_y = self.y + dy
+        cl = env_cl or {}
 
-        # On met à jour les nouvelles positions pour un environnement en tore
-        self.x = new_x % self.env_width
-        self.y = new_y % self.env_height
+        # CL X
+        if cl.get('x_left') == 'NEUMANN' and cl.get('x_right') == 'NEUMANN':
+            new_x = min(max(new_x, 1.0), self.env_width - 1.0)
+        elif cl.get('x_left') == 'NEUMANN':
+            new_x = new_x % self.env_width
+            new_x = max(new_x, 1.0)
+        elif cl.get('x_right') == 'NEUMANN':
+            new_x = new_x % self.env_width
+            new_x = min(new_x, self.env_width - 1.0)
+        else:
+            new_x = new_x % self.env_width
+
+        # CL Y
+        if cl.get('y_top') == 'NEUMANN' and cl.get('y_bottom') == 'NEUMANN':
+            new_y = min(max(new_y, 1.0), self.env_height - 1.0)
+        elif cl.get('y_top') == 'NEUMANN':
+            new_y = new_y % self.env_height
+            new_y = max(new_y, 1.0)
+        elif cl.get('y_bottom') == 'NEUMANN':
+            new_y = new_y % self.env_height
+            new_y = min(new_y, self.env_height - 1.0)
+        else:
+            new_y = new_y % self.env_height
+
+        self.x = new_x
+        self.y = new_y
 
     def rotate(self):
         self.angle += self.rotate_deg
@@ -147,7 +169,7 @@ class Agent:
             self.energy -= self.cost_rotate
             lost_energy += self.cost_rotate
         if action_move and self.energy >= self.cost_move:
-            self.move()
+            self.move(env_cl=getattr(self, 'env_cl', None))
             self.energy -= self.cost_move
             lost_energy += self.cost_move
         # Bouches : chaque tentative coûte de l'énergie, relâchée en MD1

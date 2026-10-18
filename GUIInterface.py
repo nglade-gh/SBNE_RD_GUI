@@ -176,6 +176,104 @@ class StatsPanel:
 
 
 # ============================================================================
+# MENU SAUVEGARDE / RESTAURATION
+# ============================================================================
+class MenuOverlay:
+    """Menu de sauvegarde/restauration affiché par-dessus la fenêtre."""
+
+    def __init__(self):
+        self.visible = False
+        self.buttons = []       # (rect, label, action_id)
+        self.input_rect = None  # champ de saisie de chemin
+        self.input_text = ""
+        self.input_active = False
+        self.status_msg = ""
+
+    def toggle(self):
+        self.visible = not self.visible
+
+    def show(self):
+        self.visible = True
+
+    def handle_event(self, event):
+        """Retourne True si l'événement a été consommé."""
+        if not self.visible:
+            return False
+        if event.type == pygame.KEYDOWN:
+            if self.input_active:
+                if event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
+                    self.input_active = False
+                elif event.key == pygame.K_ESCAPE:
+                    self.input_active = False
+                elif event.key == pygame.K_BACKSPACE:
+                    self.input_text = self.input_text[:-1]
+                elif event.unicode and event.unicode.isprintable():
+                    self.input_text += event.unicode
+                return True
+            if event.key == pygame.K_ESCAPE:
+                self.visible = False
+                return True
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            if self.input_rect and self.input_rect.collidepoint(event.pos):
+                self.input_active = True
+                return True
+            for rect, _label, action in self.buttons:
+                if rect.collidepoint(event.pos):
+                    return ("menu_action", action)
+            # Clic en dehors du menu → fermer
+            self.visible = False
+            return True
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 3:
+            self.visible = False
+            return True
+        return True  # consomme tous les événements quand visible
+
+    def draw(self, screen, font, font_small, font_title):
+        """Dessine le menu centré. Retourne la liste des actions à exécuter."""
+        if not self.visible:
+            return []
+        w, h = screen.get_size()
+        panel_w, panel_h = 460, 420
+        px, py = (w - panel_w) // 2, (h - panel_h) // 2
+        pygame.draw.rect(screen, (15, 20, 30), (px, py, panel_w, panel_h), border_radius=8)
+        pygame.draw.rect(screen, COLOR_BORDER, (px, py, panel_w, panel_h), 2, border_radius=8)
+        screen.blit(font_title.render("MENU — Sauvegarde / Restauration", True, COLOR_TEXT),
+                    (px + 16, py + 10))
+
+        actions = [
+            ("save_sim", "Sauvegarder la simulation (pickle)"),
+            ("restore_sim", "Restaurer une simulation"),
+            ("save_default", "Sauvegarder les paramètres comme défaut"),
+            ("save_params", "Sauvegarder les paramètres dans un fichier"),
+            ("restore_default", "Restaurer les paramètres par défaut"),
+            ("save_origin", "Sauvegarder les paramètres d'origine"),
+            ("restore_origin", "Restaurer les paramètres d'origine"),
+            ("load_params", "Charger un fichier de paramètres"),
+            ("close", "Fermer le menu"),
+        ]
+        self.buttons = []
+        y = py + 40
+        for action_id, label in actions:
+            rect = pygame.Rect(px + 16, y, panel_w - 32, 28)
+            hover = rect.collidepoint(pygame.mouse.get_pos())
+            pygame.draw.rect(screen, (30, 38, 55) if hover else (25, 30, 45), rect, border_radius=3)
+            screen.blit(font_small.render(label, True, COLOR_TEXT), (px + 24, y + 4))
+            self.buttons.append((rect, label, action_id))
+            y += 32
+
+        # Champ de saisie de chemin
+        self.input_rect = pygame.Rect(px + 16, y + 8, panel_w - 32, 24)
+        pygame.draw.rect(screen, (20, 26, 40) if not self.input_active else (30, 40, 60),
+                         self.input_rect, border_radius=3)
+        txt = self.input_text + ("|" if self.input_active else "")
+        screen.blit(font_small.render(txt, True, COLOR_TEXT), (self.input_rect.x + 6, self.input_rect.y + 3))
+
+        if self.status_msg:
+            screen.blit(font_small.render(self.status_msg, True, COLOR_YELLOW), (px + 16, py + 40))
+        return []
+
+
+# ============================================================================
 # ARBORESCENCE GAUCHE
 # ============================================================================
 class LeftPanelTree:
@@ -194,7 +292,7 @@ class LeftPanelTree:
 
         self.sections = {
             "Paramètres": {"expanded": True, "items": []},
-            "Agents": {"expanded": True, "items": []},
+            "Agents": {"expanded": False, "items": []},  # replié par défaut (sinon la section Environnement est inaccessible)
             "Environnement": {"expanded": False, "items": []},
         }
 
@@ -213,6 +311,9 @@ class LeftPanelTree:
         self.section_headers = {}
         self.param_value_rects = {}
         self.agent_checkboxes = []
+        self.cl_buttons = {}       # (side, matter) -> rect (section Environnement)
+        self._agents_cl = {}       # side -> "TORIC" | "NEUMANN" (CL agents)
+        self.on_cl_change = None    # callback(side, matter, nouvelle_valeur)
 
     def update_rect(self, x, y, w, h):
         """Repositionne/redimensionne le panneau (redimensionnement utilisateur)."""
@@ -221,6 +322,9 @@ class LeftPanelTree:
     # ------------------------------------------------------------------
     # Hauteur de contenu (pour le scrollbar)
     # ------------------------------------------------------------------
+    # Nombre max d'agents affichés dans le panneau (évite un contenu trop long)
+    _MAX_AGENTS_DISPLAY = 40
+
     def _content_height(self):
         h = 0
         for name in ("Paramètres", "Agents", "Environnement"):
@@ -228,11 +332,15 @@ class LeftPanelTree:
             if not self.sections[name]["expanded"]:
                 continue
             if name == "Paramètres":
-                h += 20 * max(1, len(self.params))
+                h += 20 * max(1, len(self.params)) + 4
             elif name == "Agents":
-                h += 18 * max(1, len(self.sections["Agents"]["items"]))
+                n = min(len(self.sections["Agents"]["items"]), self._MAX_AGENTS_DISPLAY)
+                h += 18 * max(1, n)
+                if len(self.sections["Agents"]["items"]) > self._MAX_AGENTS_DISPLAY:
+                    h += 18  # ligne "…"
             else:
-                h += 24
+                # Environnement : 4 bords × (label + 3 boutons) + ligne Dirichlet
+                h += 24 + 4 * 4 * 22 + 20
         return h
 
     # ------------------------------------------------------------------
@@ -258,7 +366,7 @@ class LeftPanelTree:
             return True
 
         # --- Molette dans le panneau ---
-        if event.type == pygame.MOUSEWHEEL and self.rect.collidepoint(event.pos):
+        if event.type == pygame.MOUSEWHEEL and self.rect.collidepoint(event.pos if hasattr(event, "pos") else (0, 0)):
             self.scroll_y = max(0, min(self.scroll_max, self.scroll_y - event.y * 22))
             return True
 
@@ -301,7 +409,30 @@ class LeftPanelTree:
             # Header de section : replier/déplier
             for name, rect in self.section_headers.items():
                 if rect.collidepoint(event.pos):
-                    self.sections[name]["expanded"] = not self.sections[name]["expanded"]
+                    was = self.sections[name]["expanded"]
+                    self.sections[name]["expanded"] = not was
+                    # Scroller pour que TOUT le contenu déplié soit visible
+                    if not was:
+                        contenu = {"Paramètres": 20 * max(1, len(self.params)) + 4,
+                                   "Agents": 18 * min(len(self.sections["Agents"]["items"]), self._MAX_AGENTS_DISPLAY) + 18,
+                                   "Environnement": 24 + 4 * 4 * 22 + 20}[name]
+                        visible_h = self.rect.h - 30
+                        cible = rect.y + contenu - visible_h + 28
+                        # Recalcule scroll_max en supposant la section dépliée
+                        h = 0
+                        for nm in ("Paramètres", "Agents", "Environnement"):
+                            h += 28
+                            exp = self.sections[nm]["expanded"] or nm == name
+                            if not exp:
+                                continue
+                            if nm == "Paramètres":
+                                h += 20 * max(1, len(self.params)) + 4
+                            elif nm == "Agents":
+                                h += 18 * min(len(self.sections["Agents"]["items"]), self._MAX_AGENTS_DISPLAY) + 18
+                            else:
+                                h += 24 + 4 * 4 * 22
+                        self.scroll_max = max(0, h - visible_h)
+                        self.scroll_y = min(self.scroll_max, max(0, cible))
                     return True
             # Valeur de paramètre : commencer une NOUVELLE saisie (champ vide)
             for key, rect in self.param_value_rects.items():
@@ -313,6 +444,11 @@ class LeftPanelTree:
             for agent_id, rect, _ in self.agent_checkboxes:
                 if rect.collidepoint(event.pos):
                     return ("agent_toggle", agent_id)
+            # Boutons de conditions aux limites (section Environnement)
+            for (side_key, matter), rect in self.cl_buttons.items():
+                if rect.collidepoint(event.pos):
+                    self._cycle_cl(side_key, matter)
+                    return True
 
         return False
 
@@ -404,7 +540,7 @@ class LeftPanelTree:
         if "Environnement" in self.sections:
             y = self._draw_section_header(screen, "Environnement", y)
             if self.sections["Environnement"]["expanded"]:
-                y = self._draw_placeholder(screen, y, "Réservé pour futures fonctionnalités.")
+                y = self._draw_environment(screen, y)
 
         screen.set_clip(None)
 
@@ -440,6 +576,9 @@ class LeftPanelTree:
         self.param_value_rects = {}
         row_h = 20
         for key, value in self.params.items():
+            # Les paramètres de conditions aux limites (CL_*) sont dans la section Environnement
+            if key.startswith("CL_"):
+                continue
             if y + row_h < self.rect.y + 26 or y > self.rect.bottom:
                 y += row_h
                 continue
@@ -462,10 +601,12 @@ class LeftPanelTree:
         return y
 
     def _draw_agents(self, screen, y):
-        """Agents : checkbox (VERTE si sélectionné) + nom."""
+        """Agents : checkbox (VERTE si sélectionné) + nom (limité à _MAX_AGENTS_DISPLAY)."""
         self.agent_checkboxes = []
         row_h = 18
-        for agent_id, alive in self.sections["Agents"]["items"]:
+        items = self.sections["Agents"]["items"]
+        displayed = items[:self._MAX_AGENTS_DISPLAY]
+        for agent_id, alive in displayed:
             if y + row_h < self.rect.y + 26 or y > self.rect.bottom:
                 y += row_h
                 continue
@@ -482,7 +623,82 @@ class LeftPanelTree:
                         (self.rect.x + 34, y + 1))
             self.agent_checkboxes.append((agent_id, cb_rect, alive))
             y += row_h
+        # Indicateur si plus d'agents
+        if len(items) > self._MAX_AGENTS_DISPLAY:
+            surf = self.font_small.render(f"… {len(items) - self._MAX_AGENTS_DISPLAY} autres agents", True, COLOR_TEXT_DIM)
+            screen.blit(surf, (self.rect.x + 34, y + 1))
         return y
+
+    # ------------------------------------------------------------------
+    # Section Environnement : conditions aux limites
+    # ------------------------------------------------------------------
+    # Choix par bord : MD1 et MD2 → TORIC / NEUMANN / DIRICHLET ; Agents → TORIC / NEUMANN
+    _CL_CHOICES_MATTER = ["TORIC", "NEUMANN", "DIRICHLET"]
+    _CL_CHOICES_AGENTS = ["TORIC", "NEUMANN"]
+
+    def _draw_environment(self, screen, y):
+        """Section Environnement : 4 bords × (MD1, MD2, Agents) avec boutons cyclables."""
+        self.cl_buttons = {}  # (side, matter) -> rect
+        row_h = 22
+        sides = [
+            ("X - Gauche", "LEFT", "X"), ("X - Droite", "RIGHT", "X"),
+            ("Y - Haut", "TOP", "Y"), ("Y - Bas", "BOTTOM", "Y"),
+        ]
+        for label, side_key, _axis in sides:
+            if y + row_h < self.rect.y + 26 or y > self.rect.bottom:
+                y += row_h
+                continue
+            screen.blit(self.font.render(label, True, COLOR_TEXT), (self.rect.x + 16, y + 3))
+            y += row_h
+            for matter, choices in (("MD1", self._CL_CHOICES_MATTER), ("MD2", self._CL_CHOICES_MATTER), ("Agents", self._CL_CHOICES_AGENTS)):
+                if y + row_h < self.rect.y + 26 or y > self.rect.bottom:
+                    y += row_h
+                    continue
+                cur = self._get_cl(side_key, matter)
+                btn_rect = pygame.Rect(self.rect.x + 16, y, self.rect.w - 32, row_h)
+                color = COLOR_BUTTON_HOVER if btn_rect.collidepoint(pygame.mouse.get_pos()) else COLOR_BG_HEADER
+                pygame.draw.rect(screen, color, btn_rect, border_radius=3)
+                screen.blit(self.font_small.render(f"{matter}: {cur}", True, COLOR_TEXT), (self.rect.x + 22, y + 3))
+                self.cl_buttons[(side_key, matter)] = btn_rect
+                y += row_h
+        # Paramètre lié : valeur Dirichlet éditable
+        if y + row_h < self.rect.y + 26 or y > self.rect.bottom:
+            y += row_h
+        screen.blit(self.font.render("Dirichlet:", True, COLOR_TEXT), (self.rect.x + 16, y + 3))
+        val_rect = pygame.Rect(self.rect.x + 100, y, self.rect.w - 120, row_h)
+        cur = self.params.get("CL_DIRICHLET_VALUE", 0.0)
+        color = COLOR_GREEN if self.editing_key == "CL_DIRICHLET_VALUE" else COLOR_TEXT
+        txt = (self.editing_text + "|") if self.editing_key == "CL_DIRICHLET_VALUE" else str(cur)
+        pygame.draw.rect(screen, (30, 40, 60) if self.editing_key == "CL_DIRICHLET_VALUE" else COLOR_BG_HEADER,
+                         val_rect, border_radius=3)
+        screen.blit(self.font_small.render(txt, True, color), (val_rect.x + 6, y + 4))
+        self.param_value_rects["CL_DIRICHLET_VALUE"] = val_rect
+        y += row_h
+        return y
+
+    def _get_cl(self, side_key, matter):
+        """Lit la valeur CL courante (self.params = PARAMS pour MD, _agents_cl pour agents)."""
+        if matter in ("MD1", "MD2"):
+            return self.params.get(f"CL_{matter}_{side_key}", "TORIC")
+        return self._agents_cl.get(side_key, "TORIC")
+
+    def _cycle_cl(self, side_key, matter):
+        """Clic sur un bouton CL : cycle à travers les choix."""
+        choices = self._CL_CHOICES_AGENTS if matter == "Agents" else self._CL_CHOICES_MATTER
+        if matter == "Agents":
+            cur = self._agents_cl.get(side_key, "TORIC")
+            idx = choices.index(cur) if cur in choices else 0
+            new = choices[(idx + 1) % len(choices)]
+            self._agents_cl[side_key] = new
+            if self.on_cl_change:
+                self.on_cl_change(side_key, matter, new)
+        else:
+            cur = self.params.get(f"CL_{matter}_{side_key}", "TORIC")
+            idx = choices.index(cur) if cur in choices else 0
+            new = choices[(idx + 1) % len(choices)]
+            self.params[f"CL_{matter}_{side_key}"] = new
+            if self.on_cl_change:
+                self.on_cl_change(side_key, matter, new)
 
     def _draw_placeholder(self, screen, y, text):
         surf = self.font.render(text, True, COLOR_TEXT_DIM)
