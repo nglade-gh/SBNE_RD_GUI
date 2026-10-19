@@ -718,18 +718,23 @@ class Simulation:
         self.console.info(f"CL {side} {matter} → {value}")
 
     def _toggle_agent_selection(self, agent_id):
-        """Toggles an agent's selection (panel checkbox or world click)."""
+        """Toggle an agent's selection (panel checkbox or world click).
+        A dead agent cannot be (re)selected."""
         if agent_id in self.selected_agents:
             self.selected_agents.remove(agent_id)
             self.console.info(f"Agent {agent_id} deselected")
-        else:
-            if len(self.selected_agents) >= self.max_selected_sbn:
-                self.console.error(
-                    "Il n'est pas possible de sélectionner davantage d'agents ; "
-                    "modify the MAX_SELECTED_SBN parameter")
-                return
-            self.selected_agents.append(agent_id)
-            self.console.info(f"Agent {agent_id} selected (tab {len(self.selected_agents)})")
+            return
+        # Vérifie que l'agent est vivant avant de le sélectionner
+        if not any(a.id == agent_id and a.alive for a in self.agents):
+            self.console.info(f"Agent {agent_id} n'est plus vivant — sélection impossible")
+            return
+        if len(self.selected_agents) >= self.max_selected_sbn:
+            self.console.error(
+                "Maximum number of selectable agents reached; "
+                "modify the MAX_SELECTED_SBN parameter")
+            return
+        self.selected_agents.append(agent_id)
+        self.console.info(f"Agent {agent_id} selected (tab {len(self.selected_agents)})")
 
     def _handle_world_click(self, wx, wy, button=1):
         """Left click (1) = select ; right click (3) = deselect."""
@@ -921,6 +926,12 @@ class Simulation:
                     agent.y = min(agent.y, self.height - 1.0)
 
         self.agents = [a for a in self.agents if a.alive]
+        # Retirer de la sélection les agents morts (ils ne sont plus affichables)
+        alive_ids = {a.id for a in self.agents}
+        dead_selected = [aid for aid in self.selected_agents if aid not in alive_ids]
+        if dead_selected:
+            self.selected_agents = [aid for aid in self.selected_agents if aid in alive_ids]
+            self.left_panel.update_selected(self.selected_agents)
         self.agents.extend(new_enfants)
 
     def _build_cl(self, prefix, side):
